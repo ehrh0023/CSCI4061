@@ -16,6 +16,10 @@ int parse(char * lpszFileName)
 	char szLine[1024];
 	char * lpszLine;
 	FILE * fp = file_open(lpszFileName);
+	
+	target_t targetList[100]; //Array of target structs; placeholder for graph implementation
+	int nTargetCount=-1; //Counter for placing targets in array
+	int nDependencyCount=0; //Counter for placing dependencies in array inside target
 
 	if(fp == NULL)
 	{
@@ -30,7 +34,7 @@ int parse(char * lpszFileName)
 		// each line of the file to be able to deal with it later
 
 		//Remove newline character at end if there is one
-		lpszLine = strtok(szLine, "\n"); 
+		lpszLine = strtok(szLine, "\n");
 
 		//You need to check below for parsing. 
 		//Skip if blank or comment.
@@ -41,6 +45,47 @@ int parse(char * lpszFileName)
 		//If lpszLine starts with '\t' it will be command else it will be target.
 		//It is possbile that target may not have a command as you can see from the example on project write-up. (target:all)
 		//You can use any data structure (array, linked list ...) as you want to build a graph
+
+		if (lpszLine != NULL && strncmp(lpszLine, "#", 1) != 0) //Checks if "blank line" or comment
+		{
+			//If there is no tab first
+			if (strncmp(lpszLine, "\t", 1) != 0)
+			{
+				nTargetCount++;
+				nDependencyCount = 0;
+				lpszLine = strtok(szLine, ": ");
+				strcpy(targetList[nTargetCount].szTarget, lpszLine);
+				
+				lpszLine = strtok(NULL, " ");
+				while (lpszLine != NULL)
+				{
+					strcpy(targetList[nTargetCount].szDependencies[nDependencyCount], lpszLine);
+					nDependencyCount++;
+					lpszLine = strtok(NULL, " ");
+				}
+				targetList[nTargetCount].nDependencyCount = nDependencyCount;
+				nDependencyCount = 0;
+			}
+			else //If there is a tab first
+			{
+				lpszLine = strtok(szLine, "\t"); //Removes the initial tab
+				strcpy(targetList[nTargetCount].szCommand, lpszLine);
+			}
+		}
+	}
+	
+	//DEBUG CODE: Prints the target information to terminal
+	int i = 0;
+	while (nTargetCount > i)
+	{
+		printf("%d: %s\n", i, targetList[i].szTarget);
+		nDependencyCount = targetList[i].nDependencyCount;
+		int j = 0;
+		while (nDependencyCount > j) {
+			printf("\tDependency %d: %s\n", j, targetList[i].szDependencies[j]);
+			j++;
+		}
+		i++;
 	}
 
 	//Close the makefile. 
@@ -69,7 +114,7 @@ int main(int argc, char **argv)
 	char * format = "f:hnBm:";
 	
 	// Default makefile name will be Makefile
-	char szMakefile[64] = "Makefile";
+	char szMakefile[64] = "NEWmake4061";
 	char szTarget[64];
 	char szLog[64];
 
