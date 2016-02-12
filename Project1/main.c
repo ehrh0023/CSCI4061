@@ -9,6 +9,8 @@
 
 #include "util.h"
 
+#define DEBUG 0
+
 //This function will parse makefile input from user or default makeFile. 
 int parse(char * lpszFileName)
 {
@@ -20,6 +22,9 @@ int parse(char * lpszFileName)
 	target_t targetList[100]; //Array of target structs; placeholder for graph implementation
 	int nTargetCount=-1; //Counter for placing targets in array
 	int nDependencyCount=0; //Counter for placing dependencies in array inside target
+	
+	char szFirstCommand[64];
+	int boolCommand = 0; //Boolean for checking if we already have a command
 
 	if(fp == NULL)
 	{
@@ -37,55 +42,73 @@ int parse(char * lpszFileName)
 		lpszLine = strtok(szLine, "\n");
 
 		//You need to check below for parsing. 
-		//Skip if blank or comment.
-		//Remove leading whitespace.
-		//Skip if whitespace-only.
-		//Only single command is allowed.
-		//If you found any syntax error, stop parsing. 
-		//If lpszLine starts with '\t' it will be command else it will be target.
-		//It is possbile that target may not have a command as you can see from the example on project write-up. (target:all)
+		//Skip if blank or comment. O
+		//Remove leading whitespace. O
+		//Skip if whitespace-only. O
+		//Only single command is allowed. X
+		//If you found any syntax error, stop parsing. X
+		//If lpszLine starts with '\t' it will be command else it will be target. O
+		//It is possbile that target may not have a command as you can see from the example on project write-up. (target:all) O
 		//You can use any data structure (array, linked list ...) as you want to build a graph
 
-		if (lpszLine != NULL && strncmp(lpszLine, "#", 1) != 0) //Checks if "blank line" or comment
+		if (lpszLine != NULL) //Checks if "blank line"
 		{
-			//If there is no tab first
-			if (strncmp(lpszLine, "\t", 1) != 0)
+			if (strncmp(lpszLine, "\t", 1) != 0) //If there is no tab first
 			{
-				nTargetCount++;
-				nDependencyCount = 0;
-				lpszLine = strtok(szLine, ": ");
-				strcpy(targetList[nTargetCount].szTarget, lpszLine);
-				
-				lpszLine = strtok(NULL, " ");
-				while (lpszLine != NULL)
+				if (strncmp(lpszLine, "#", 1) != 0) //If the line is not a comment
 				{
-					strcpy(targetList[nTargetCount].szDependencies[nDependencyCount], lpszLine);
-					nDependencyCount++;
-					lpszLine = strtok(NULL, " ");
+					nTargetCount++;
+					nDependencyCount = 0;
+					boolCommand = 0;
+					lpszLine = strtok(szLine, ": ");
+					strcpy(targetList[nTargetCount].szTarget, lpszLine);
+					
+					lpszLine = strtok(NULL, " \t");
+					while (lpszLine != NULL)
+					{
+						strcpy(targetList[nTargetCount].szDependencies[nDependencyCount], lpszLine);
+						nDependencyCount++;
+						lpszLine = strtok(NULL, " \t");
+					}
+					targetList[nTargetCount].nDependencyCount = nDependencyCount;
+					nDependencyCount = 0;
 				}
-				targetList[nTargetCount].nDependencyCount = nDependencyCount;
-				nDependencyCount = 0;
 			}
 			else //If there is a tab first
 			{
-				lpszLine = strtok(szLine, "\t"); //Removes the initial tab
-				strcpy(targetList[nTargetCount].szCommand, lpszLine);
+				while (isblank(*lpszLine)) {lpszLine++;} //Skip all leading whitespace
+				if (lpszLine != NULL && strncmp(lpszLine, "#", 1) != 0) //If the line is not empty or a comment
+				{
+					if (boolCommand) //If we already have a command
+					{
+						printf("\nToo many commands!\n\n"); //TO DO: Break the parser here
+					}
+					else
+					{
+						strcpy(targetList[nTargetCount].szCommand, lpszLine);
+						boolCommand = 1;
+					}
+				}
 			}
 		}
 	}
 	
 	//DEBUG CODE: Prints the target information to terminal
-	int i = 0;
-	while (nTargetCount > i)
+	if (DEBUG)
 	{
-		printf("%d: %s\n", i, targetList[i].szTarget);
-		nDependencyCount = targetList[i].nDependencyCount;
-		int j = 0;
-		while (nDependencyCount > j) {
-			printf("\tDependency %d: %s\n", j, targetList[i].szDependencies[j]);
-			j++;
+		int i = 0;
+		while (nTargetCount > i)
+		{
+			printf("%d: %s\n", i, targetList[i].szTarget);
+			nDependencyCount = targetList[i].nDependencyCount;
+			int j = 0;
+			while (nDependencyCount > j) {
+				printf("\tDependency %d: %s\n", j, targetList[i].szDependencies[j]);
+				j++;
+			}
+			printf("\tCommand: %s\n", targetList[i].szCommand);
+			i++;
 		}
-		i++;
 	}
 
 	//Close the makefile. 
@@ -114,7 +137,7 @@ int main(int argc, char **argv)
 	char * format = "f:hnBm:";
 	
 	// Default makefile name will be Makefile
-	char szMakefile[64] = "NEWmake4061";
+	char szMakefile[64] = "./testcases/make_testcase/Makefile"; // default is Makefile
 	char szTarget[64];
 	char szLog[64];
 
