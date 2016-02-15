@@ -11,16 +11,16 @@
 
 #define DEBUG 0
 
-//int maxsize= 10; //10 targets
+int maxsize= 10; //10 targets
 
-struct node(char * a){
-	char * name=a;
-	std::list<node> parent;
-	std::list<node> child;
-	int boolRun = 0; //Check if a process has been run yet.
-}
+struct node(){
+	char * name;
+	struct node* parent[maxsize];
+	struct node* child[maxsize];
+	int boolRun; //Check if a process has been run yet.
+};
 
-node graphRoot(null);
+struct node graphRoot();
 
 //This function will parse makefile input from user or default makeFile. 
 int parse(char * lpszFileName)
@@ -127,15 +127,16 @@ int parse(char * lpszFileName)
 
 
 	//Building graph here, to use all these instance vars.
-	node tempnodes[nTargetCount];
+	struct node tempnodes[nTargetCount];
 	int i=0;
 	while(i<nTargetCount){
-		tempnodes[i]=new node(nTargetCount.szCommand);
+		tempnodes[i]=new struct node();
+		tempnodes[i].name= targetList[i].szCommand;
 		i++;
 	}
 	int temp =0;
 	int temp1 =0;
-	node tempnod = NULL;
+	struct node tempnod = NULL;
 	char * tempstr = NULL;
 	i =0;
 	while(i<nTargetCount){
@@ -156,8 +157,12 @@ int parse(char * lpszFileName)
 			int k=0;
 			while(k< nTargetCount){
 				if(tempstr==targetList[k].szCommand){
-					tempnodes[k].child.append(tempnod);
-					tempnod.parent.append(tempnodes[k]);
+					int l=0;
+					while(tempnodes[k].child[l]!=null) l++;
+					tempnodes[k].child[l]= *tempnod;
+					l=0;
+					while(tempnod.parent[l]!=null) l++;
+					tempnod.parent[l]= *tempnodes[k];
 					k= nTargetCount;
 				}
 				k++;
