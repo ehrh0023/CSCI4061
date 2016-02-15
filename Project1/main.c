@@ -11,6 +11,17 @@
 
 #define DEBUG 0
 
+//int maxsize= 10; //10 targets
+
+struct node(char * a){
+	char * name=a;
+	std::list<node> parent;
+	std::list<node> child;
+	int boolRun = 0; //Check if a process has been run yet.
+}
+
+node graphRoot(null);
+
 //This function will parse makefile input from user or default makeFile. 
 int parse(char * lpszFileName)
 {
@@ -114,6 +125,51 @@ int parse(char * lpszFileName)
 	//Close the makefile. 
 	fclose(fp);
 
+
+	//Building graph here, to use all these instance vars.
+	node tempnodes[nTargetCount];
+	int i=0;
+	while(i<nTargetCount){
+		tempnodes[i]=new node(nTargetCount.szCommand);
+		i++;
+	}
+	int temp =0;
+	int temp1 =0;
+	node tempnod = NULL;
+	char * tempstr = NULL;
+	i =0;
+	while(i<nTargetCount){
+		if(targetList[i].nDependencyCount == 0){
+			graphRoot.child[temp]= *tempnodes[i];
+			temp++;
+		}
+		i++;
+	}
+	temp=0;
+	i =0;
+	while(i< nTargetCount){
+		tempnod=targetList[i];
+		temp=tempnod.nDependencyCount;
+		int j=0;
+		while(j<temp){
+			tempstr= tempnod.szDependencies[j];
+			int k=0;
+			while(k< nTargetCount){
+				if(tempstr==targetList[k].szCommand){
+					tempnodes[k].child.append(tempnod);
+					tempnod.parent.append(tempnodes[k]);
+					k= nTargetCount;
+				}
+				k++;
+			}
+			j++;
+		}
+		i++;
+	}
+	
+
+	//delete temp, temp1, tempnod, tempstr; //may also delete tempnodes pointers, since nodes are now linked via graphRoot.
+
 	return 0;
 }
 
@@ -127,6 +183,7 @@ void show_error_message(char * lpszFileName)
 	fprintf(stderr, "-m FILE\t\tRedirect the output to the file specified .\n");
 	exit(0);
 }
+
 
 int main(int argc, char **argv) 
 {
@@ -197,3 +254,5 @@ int main(int argc, char **argv)
 	//then execute all of the targets that were specified on the command line, along with their dependencies, etc.
 	return EXIT_SUCCESS;
 }
+
+
