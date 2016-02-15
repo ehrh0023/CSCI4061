@@ -9,31 +9,30 @@
 
 #include "util.h"
 
-#define DEBUG 0
+#define DEBUG 1
 
-struct node(){
+struct node{
 	char * name;
-	struct node* parent[MAX_NODES];
-	struct node* child[MAX_NODES];
+	struct node *parent[MAX_NODES];
+	struct node *child[MAX_CHILDREN];
 	int boolRun; //Check if a process has been run yet.
 };
 
 struct node graphRoot();
+target_t targetList[MAX_NODES]; //Array of target structs
+int nTargetCount=-1; //Counter for placing targets in array
 
 //This function will parse makefile input from user or default makeFile. 
 int parse(char * lpszFileName)
 {
-	int nLine=0;
+	int nLine = 0;
 	char szLine[1024];
 	char * lpszLine;
 	FILE * fp = file_open(lpszFileName);
 	
-	target_t targetList[100]; //Array of target structs; placeholder for graph implementation
-	int nTargetCount=-1; //Counter for placing targets in array
 	int nDependencyCount=0; //Counter for placing dependencies in array inside target
 	
-	char szFirstCommand[64];
-	int boolCommand = 0; //Boolean for checking if we already have a command
+	int boolHasCommand = 0; //Boolean for checking if we already have a command
 
 	if(fp == NULL)
 	{
@@ -43,44 +42,51 @@ int parse(char * lpszFileName)
 	while(file_getline(szLine, fp) != NULL) 
 	{
 		nLine++;
-		// this loop will go through the given file, one line at a time
-		// this is where you need to do the work of interpreting
-		// each line of the file to be able to deal with it later
 
 		//Remove newline character at end if there is one
 		lpszLine = strtok(szLine, "\n");
 
-		//You need to check below for parsing. 
-		//Skip if blank or comment. O
-		//Remove leading whitespace. O
-		//Skip if whitespace-only. O
-		//Only single command is allowed. O
-		//If you found any syntax error, stop parsing. X -- Still needs to check for illegal characters
-		//If lpszLine starts with '\t' it will be command else it will be target. O
-		//It is possbile that target may not have a command as you can see from the example on project write-up. (target:all) O
-		//You can use any data structure (array, linked list ...) as you want to build a graph
-
 		if (lpszLine != NULL) //Checks if "blank line"
 		{
-			while (strncmp(lpszLine, " ", 1) == 0) {lpszLine++;} //Skip all leading spaces
 			if (strncmp(lpszLine, "\t", 1) != 0) //If there is no leading tab
 			{
 				if (strncmp(lpszLine, "#", 1) != 0) //If the line is not a comment
 				{
-					if (strchr(lpszLine, ':') == NULL) //If there is no colon
+					int boolHasColon = 0;
+					while (strlen(lpszLine) > 0) //Check for any illegal characters in line
 					{
-						printf("\nNo target name!\n\n");
+						if (isalnum(*lpszLine) || isblank(*lpszLine) || *lpszLine == '.')
+						{
+							lpszLine++;
+						}
+						else if (*lpszLine == ':' && !boolHasColon)
+						{
+							boolHasColon = 1;
+							lpszLine++;
+						}
+						else
+						{
+							printf("ERROR: Illegal character on Line %d\n", nLine);
+							return -1;
+						}
+					}
+					
+					lpszLine = szLine;
+					while (*lpszLine == ' ') {lpszLine++;} //Skip all leading spaces
+					if (strchr(lpszLine, ':') == NULL) //If there is no colon in line
+					{
+						printf("ERROR: No target on Line %d\n", nLine);
 						return -1;
 					}
 					
 					nTargetCount++;
 					nDependencyCount = 0;
-					boolHaveCommand = 0;
+					boolHasCommand = 0;
 
 					lpszLine = strtok(lpszLine, ":");
 					if (strchr(lpszLine, ' ')) //If there is a space in the target name
 					{
-						printf("\nIllegal target name!\n\n");
+						printf("ERROR: Illegal target name on Line %d\n", nLine);
 						return -1;
 					}
 					int i;
@@ -88,7 +94,7 @@ int parse(char * lpszFileName)
 					{
 						if (strcmp(lpszLine, targetList[i].szTarget) == 0)
 						{
-							printf("\nDuplicate target name!\n\n");
+							printf("ERROR: Duplicate target on Line %d\n", nLine);
 							return -1;
 						}
 					}
@@ -107,18 +113,32 @@ int parse(char * lpszFileName)
 			}
 			else //If there is a leading tab
 			{
+				while (strlen(lpszLine) > 0) //Check for any illegal characters in line
+				{
+					if (isalnum(*lpszLine) || isblank(*lpszLine) || strchr("-.'\"", *lpszLine))
+					{
+						lpszLine++;
+					}
+					else
+					{
+						printf("ERROR: Illegal character on Line %d\n", nLine);
+						return -1;
+					}
+				}
+
+				lpszLine = szLine;
 				while (isspace(*lpszLine)) {lpszLine++;} //Skip all leading whitespace
 				if (strlen(lpszLine) > 0 && strncmp(lpszLine, "#", 1) != 0) //If the line is not empty or a comment
 				{
-					if (boolHaveCommand) //If we already have a command
+					if (boolHasCommand) //If we already have a command
 					{
-						printf("\nToo many commands!\n\n");
+						printf("ERROR: Second command on Line %d\n", nLine);
 						return -1;
 					}
 					else //If we don't have a command
 					{
 						strcpy(targetList[nTargetCount].szCommand, lpszLine);
-						boolHaveCommand = 1;
+						boolHasCommand = 1;
 					}
 				}
 			}
@@ -129,13 +149,13 @@ int parse(char * lpszFileName)
 	if (DEBUG)
 	{
 		int i = 0;
-		while (nTargetCount > i)
+		while (nTargetCount >= i)
 		{
-			printf("%d: %s\n", i, targetList[i].szTarget);
+			printf("%d: %s\n", i+1, targetList[i].szTarget);
 			nDependencyCount = targetList[i].nDependencyCount;
 			int j = 0;
 			while (nDependencyCount > j) {
-				printf("\tDependency %d: %s\n", j, targetList[i].szDependencies[j]);
+				printf("\tDependency %d: %s\n", j+1, targetList[i].szDependencies[j]);
 				j++;
 			}
 			printf("\tCommand: %s\n", targetList[i].szCommand);
@@ -146,7 +166,7 @@ int parse(char * lpszFileName)
 	//Close the makefile. 
 	fclose(fp);
 
-
+/*
 	//Building graph here, to use all these instance vars.
 	struct node tempnodes[nTargetCount];
 	int i=0;
@@ -192,7 +212,7 @@ int parse(char * lpszFileName)
 		}
 		i++;
 	}
-	
+*/
 
 	//delete temp, temp1, tempnod, tempstr; //may also delete tempnodes pointers, since nodes are now linked via graphRoot.
 
