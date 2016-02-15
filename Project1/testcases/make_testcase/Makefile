@@ -1,7 +1,7 @@
 all: make4061
 	echo 'make4061'
 
-make4061: util.a main.o 
+make4061: util.a main.o
 	gcc -o make4061 main.o util.a
 
 main.o: main.c

@@ -11,12 +11,10 @@
 
 #define DEBUG 0
 
-int maxsize= 10; //10 targets
-
 struct node(){
 	char * name;
-	struct node* parent[maxsize];
-	struct node* child[maxsize];
+	struct node* parent[MAX_NODES];
+	struct node* child[MAX_NODES];
 	int boolRun; //Check if a process has been run yet.
 };
 
@@ -56,22 +54,44 @@ int parse(char * lpszFileName)
 		//Skip if blank or comment. O
 		//Remove leading whitespace. O
 		//Skip if whitespace-only. O
-		//Only single command is allowed. X
-		//If you found any syntax error, stop parsing. X
+		//Only single command is allowed. O
+		//If you found any syntax error, stop parsing. X -- Still needs to check for illegal characters
 		//If lpszLine starts with '\t' it will be command else it will be target. O
 		//It is possbile that target may not have a command as you can see from the example on project write-up. (target:all) O
 		//You can use any data structure (array, linked list ...) as you want to build a graph
 
 		if (lpszLine != NULL) //Checks if "blank line"
 		{
-			if (strncmp(lpszLine, "\t", 1) != 0) //If there is no tab first
+			while (strncmp(lpszLine, " ", 1) == 0) {lpszLine++;} //Skip all leading spaces
+			if (strncmp(lpszLine, "\t", 1) != 0) //If there is no leading tab
 			{
 				if (strncmp(lpszLine, "#", 1) != 0) //If the line is not a comment
 				{
+					if (strchr(lpszLine, ':') == NULL) //If there is no colon
+					{
+						printf("\nNo target name!\n\n");
+						return -1;
+					}
+					
 					nTargetCount++;
 					nDependencyCount = 0;
-					boolCommand = 0;
-					lpszLine = strtok(szLine, ": ");
+					boolHaveCommand = 0;
+
+					lpszLine = strtok(lpszLine, ":");
+					if (strchr(lpszLine, ' ')) //If there is a space in the target name
+					{
+						printf("\nIllegal target name!\n\n");
+						return -1;
+					}
+					int i;
+					for (i = 0; i < nTargetCount; i++) //Check for duplicate target names
+					{
+						if (strcmp(lpszLine, targetList[i].szTarget) == 0)
+						{
+							printf("\nDuplicate target name!\n\n");
+							return -1;
+						}
+					}
 					strcpy(targetList[nTargetCount].szTarget, lpszLine);
 					
 					lpszLine = strtok(NULL, " \t");
@@ -85,19 +105,20 @@ int parse(char * lpszFileName)
 					nDependencyCount = 0;
 				}
 			}
-			else //If there is a tab first
+			else //If there is a leading tab
 			{
-				while (isblank(*lpszLine)) {lpszLine++;} //Skip all leading whitespace
-				if (lpszLine != NULL && strncmp(lpszLine, "#", 1) != 0) //If the line is not empty or a comment
+				while (isspace(*lpszLine)) {lpszLine++;} //Skip all leading whitespace
+				if (strlen(lpszLine) > 0 && strncmp(lpszLine, "#", 1) != 0) //If the line is not empty or a comment
 				{
-					if (boolCommand) //If we already have a command
+					if (boolHaveCommand) //If we already have a command
 					{
-						printf("\nToo many commands!\n\n"); //TO DO: Break the parser here
+						printf("\nToo many commands!\n\n");
+						return -1;
 					}
-					else
+					else //If we don't have a command
 					{
 						strcpy(targetList[nTargetCount].szCommand, lpszLine);
-						boolCommand = 1;
+						boolHaveCommand = 1;
 					}
 				}
 			}
