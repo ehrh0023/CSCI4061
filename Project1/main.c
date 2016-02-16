@@ -30,6 +30,7 @@ int parse(char * lpszFileName)
 	int nLine = 0;
 	char szLine[1024];
 	char * lpszLine;
+
 	FILE * fp = file_open(lpszFileName);
 	
 	int nDependencyCount=0; //Counter for placing dependencies in array inside target
@@ -226,10 +227,11 @@ int parse(char * lpszFileName)
 	//node temparray[100];
 	while(i<nTargetCount){
 		int j=0;
-		while(j<10 && targetList[i].szDependencies[j]!=NULL){
+		while(j<targetList[i].nDependencyCount){
 			int k=0;
+			targetList[i].child[j]=NULL;
 			while(k<nTargetCount){
-				if(targetList[i].szDependencies[j]==targetList[k].szTarget){
+				if(strcmp(targetList[i].szDependencies[j], targetList[k].szTarget)== 0 ){
 					int l=0;
 					targetList[i].child[j]=&targetList[k];
 					k=nTargetCount;
@@ -247,44 +249,26 @@ int parse(char * lpszFileName)
 }
 
 
-void beginprocessing(char* t_name)
-{
-	int i;
-	char* target = NULL;
-
-	// Find the starting string
-	// Prep Status and pid
-	for (i = 0; i < nTargetCount; i++)
-	{
-		target->child[i]->status = 0;
-		target->child[i]->pid = -1;
-		if (strcmp(t_name, targetList[i]->szTarget) == 0)
-		{
-			target = targetList[i]->szTarget;
-		}
-	}
-	// Run Process
-	if (target != NULL)
-	{
-		process(&target, 1);
-	}
-}
-
 void process(target_t** target, int size)
 {
 	int i, j;
 	int stat_loc;
-	target* n_lvl[10];
+	target_t* n_lvl[10];
 	int n_lvl_size = 0;
+	char* cmd[12];
 
 	// Create Next Level
-	for (j = 0; j < size; i++)
+	for (j = 0; j < size; j++)
 	{
+
 		// Add Children
 		for (i = 0; i < target[j]->nDependencyCount; i++)
 		{
-			n_lvl[n_lvl_size] = target->szDependencies[i];
-			n_lvl_size++;
+			if(target[j]->child[i] != NULL)
+			{
+				n_lvl[n_lvl_size] = target[j]->child[i];
+				n_lvl_size++;
+			}
 		}
 	}
 	
@@ -295,30 +279,60 @@ void process(target_t** target, int size)
 		process(n_lvl, n_lvl_size);
 		
 		// Excute targets
-		for (j = 0; j < size; i++)
+		for (j = 0; j < size; j++)
 		{
-			if(target[j]->status == 0)
+			if(target[j]->nStatus == 0)
 			{
 				// Building Tag
-				target[j]->status = 1;
+				target[j]->nStatus = 1;
 				
 				// Fork and execute
 				target[j]->pid = fork();
 				if(target[j]->pid == 0)
 				{
-					execv(target->szCommand, target->szDependencies);
+					cmd[0] = target[j]->szCommand;
+					for(i = 1; i <= target[j]->nDependencyCount; i++)
+					{
+						cmd[i] = target[j]->szDependencies[i];
+					}		
+					cmd[target[j]->nDependencyCount+1] = "\0";		
+					execvp(cmd[0], cmd);
 					return;
 				}
 			}
 		}
 		// Wait until all forks end
-		for (j = 0; j < size; i++)
+		for (j = 0; j < size; j++)
 		{
 			waitpid(target[j]->pid, &stat_loc, 0);	
 		}
 	}
 }
 
+
+void beginprocessing(char* t_name)
+{
+	int i;
+	target_t* target = NULL;
+
+	// Find the starting string
+	// Prep Status and pid
+	for (i = 0; i < nTargetCount; i++)
+	{
+		targetList[i].nStatus = 0;
+		targetList[i].pid = -1;
+		if (strcmp(t_name, targetList[i].szTarget) == 0)
+		{
+			target = &targetList[i];
+		}
+
+	}
+	// Run Process
+	if (target != NULL)
+	{
+		process(&target, 1);
+	}
+}
 
 void show_error_message(char * lpszFileName)
 {
@@ -385,11 +399,11 @@ int main(int argc, char **argv)
 	//if target is not set, set it to default (first target from makefile)
 	if(argc == 1)
 	{
-		szTarget = argv[0];
+		strncpy(szTarget, argv[0], 64);
 	}
 	else
 	{
-		szTarget = '\0';
+		strncpy(szTarget, "\0", 64);
 	}
 
 
@@ -404,11 +418,11 @@ int main(int argc, char **argv)
 	
 	if(strcmp(szTarget, "\0") == 0)
 	{
-		beginprocessing(szTarget, targetList[0]);
+		beginprocessing(targetList[0].szTarget);
 	}
 	else
 	{
-		beginprocessing(szTarget, argv[1]);
+		beginprocessing(szTarget);
 	}
 	
 	return EXIT_SUCCESS;
