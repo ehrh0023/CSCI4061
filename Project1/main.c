@@ -253,9 +253,10 @@ void process(target_t** target, int size)
 {
 	int i, j;
 	int stat_loc;
+	int success = 0;
 	target_t* n_lvl[10];
 	int n_lvl_size = 0;
-	char* cmd[12];
+	char** cmd;
 
 	// Create Next Level
 	for (j = 0; j < size; j++)
@@ -269,11 +270,13 @@ void process(target_t** target, int size)
 				n_lvl[n_lvl_size] = target[j]->child[i];
 				n_lvl_size++;
 			}
+			success = 1;
 		}
 	}
 	
+	cmd = (char**) malloc(sizeof(char*) * 12);
 	// Only if the next level isn't empty
-	if(n_lvl_size != 0)
+	if(success)
 	{
 		// process the next level
 		process(n_lvl, n_lvl_size);
@@ -290,12 +293,7 @@ void process(target_t** target, int size)
 				target[j]->pid = fork();
 				if(target[j]->pid == 0)
 				{
-					cmd[0] = target[j]->szCommand;
-					for(i = 1; i <= target[j]->nDependencyCount; i++)
-					{
-						cmd[i] = target[j]->szDependencies[i];
-					}		
-					cmd[target[j]->nDependencyCount+1] = "\0";		
+					makeargv(target[j]->szCommand, " ", &cmd);
 					execvp(cmd[0], cmd);
 					return;
 				}
@@ -307,7 +305,8 @@ void process(target_t** target, int size)
 			waitpid(target[j]->pid, &stat_loc, 0);	
 		}
 	}
-}
+	free(cmd);
+ }
 
 
 void beginprocessing(char* t_name)
