@@ -232,8 +232,7 @@ int parse(char * lpszFileName)
 			while(k<nTargetCount){
 				if(targetList[i].szDependencies[j]==targetList[k].szTarget){
 					int l=0;
-					while(l<10 && targetList[i].child[l]!=NULL) l++;
-					targetList[i].child[l]=&targetList[k];
+					targetList[i].child[j]=&targetList[k];
 					k=nTargetcount;
 				}
 				k++;
