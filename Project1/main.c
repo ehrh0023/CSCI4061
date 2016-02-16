@@ -246,6 +246,80 @@ int parse(char * lpszFileName)
 	return 0;
 }
 
+
+void beginprocessing(char* t_name)
+{
+	int i;
+	char* target = NULL;
+
+	// Find the starting string
+	// Prep Status and pid
+	for (i = 0; i < nTargetCount; i++)
+	{
+		target->child[i]->status = 0;
+		target->child[i]->pid = -1;
+		if (strcmp(t_name, targetList[i]->szTarget) == 0)
+		{
+			target = targetList[i]->szTarget;
+		}
+	}
+	// Run Process
+	if (target != NULL)
+	{
+		process(&target, 1);
+	}
+}
+
+void process(target_t** target, int size)
+{
+	int i, j;
+	int stat_loc;
+	target* n_lvl[10];
+	int n_lvl_size = 0;
+
+	// Create Next Level
+	for (j = 0; j < size; i++)
+	{
+		// Add Children
+		for (i = 0; i < target[j]->nDependencyCount; i++)
+		{
+			n_lvl[n_lvl_size] = target->szDependencies[i];
+			n_lvl_size++;
+		}
+	}
+	
+	// Only if the next level isn't empty
+	if(n_lvl_size != 0)
+	{
+		// process the next level
+		process(n_lvl, n_lvl_size);
+		
+		// Excute targets
+		for (j = 0; j < size; i++)
+		{
+			if(target[j]->status == 0)
+			{
+				// Building Tag
+				target[j]->status = 1;
+				
+				// Fork and execute
+				target[j]->pid = fork();
+				if(target[j]->pid == 0)
+				{
+					execv(target->szCommand, target->szDependencies);
+					return;
+				}
+			}
+		}
+		// Wait until all forks end
+		for (j = 0; j < size; i++)
+		{
+			waitpid(target[j]->pid, &stat_loc, 0);	
+		}
+	}
+}
+
+
 void show_error_message(char * lpszFileName)
 {
 	fprintf(stderr, "Usage: %s [options] [target] : only single target is allowed.\n", lpszFileName);
@@ -311,9 +385,11 @@ int main(int argc, char **argv)
 	//if target is not set, set it to default (first target from makefile)
 	if(argc == 1)
 	{
+		szTarget = argv[0];
 	}
 	else
 	{
+		szTarget = '\0';
 	}
 
 
@@ -325,7 +401,15 @@ int main(int argc, char **argv)
 
 	//after parsing the file, you'll want to check all dependencies (whether they are available targets or files)
 	//then execute all of the targets that were specified on the command line, along with their dependencies, etc.
+	
+	if(strcmp(szTarget, "\0") == 0)
+	{
+		beginprocessing(szTarget, targetList[0]);
+	}
+	else
+	{
+		beginprocessing(szTarget, argv[1]);
+	}
+	
 	return EXIT_SUCCESS;
 }
-
-
