@@ -11,14 +11,16 @@
 
 #define DEBUG 1
 
+/*
 struct node{
-	char * name;
-	struct node *parent[MAX_NODES];
+	target name;
+	//struct node *parent[MAX_NODES];
 	struct node *child[MAX_CHILDREN];
 	int boolRun; //Check if a process has been run yet.
 };
 
-struct node graphRoot();
+struct node graphRoot;
+*/
 target_t targetList[MAX_NODES]; //Array of target structs
 int nTargetCount=-1; //Counter for placing targets in array
 
@@ -213,6 +215,33 @@ int parse(char * lpszFileName)
 		i++;
 	}
 */
+
+
+	//Graph
+	
+	int i=0;
+	int found;
+	graphRoot= new node;
+	char tempchar[64];
+
+	//node temparray[100];
+	while(i<nTargetCount){
+		int j=0;
+		while(j<10){
+			int k=0;
+			while(k<nTargetCount){
+				if(targetList[i].szDependencies[j]==targetList[k].szTarget){
+					int l=0;
+					while(l<10 && targetList[i].child[l]!=NULL) l++;
+					targetList[i].child[l]=&targetList[k];
+					k=nTargetcount;
+				}
+				k++;
+			}
+			j++;
+		}
+		i++;
+	}
 
 	//delete temp, temp1, tempnod, tempstr; //may also delete tempnodes pointers, since nodes are now linked via graphRoot.
 

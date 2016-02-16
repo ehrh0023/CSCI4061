@@ -38,6 +38,7 @@ typedef struct target{
 	char szDependencies[10][64];
 	char szCommand[64];
 	int nStatus;
+	struct target *child[10];
 }target_t;
 
 int makeargv(const char *s, const char *delimiters, char ***argvp);
