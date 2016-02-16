@@ -227,7 +227,7 @@ int parse(char * lpszFileName)
 	//node temparray[100];
 	while(i<nTargetCount){
 		int j=0;
-		while(j<10){
+		while(j<10 && targetList[i].szDependencies[j]!=NULL){
 			int k=0;
 			while(k<nTargetCount){
 				if(targetList[i].szDependencies[j]==targetList[k].szTarget){
