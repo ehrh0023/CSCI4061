@@ -11,16 +11,16 @@
 
 #define DEBUG 1
 
-/*
+
 struct node{
-	target name;
+	target_t name;
 	//struct node *parent[MAX_NODES];
 	struct node *child[MAX_CHILDREN];
 	int boolRun; //Check if a process has been run yet.
 };
 
 struct node graphRoot;
-*/
+
 target_t targetList[MAX_NODES]; //Array of target structs
 int nTargetCount=-1; //Counter for placing targets in array
 
@@ -221,7 +221,6 @@ int parse(char * lpszFileName)
 	
 	int i=0;
 	int found;
-	graphRoot= new node;
 	char tempchar[64];
 
 	//node temparray[100];
@@ -233,7 +232,7 @@ int parse(char * lpszFileName)
 				if(targetList[i].szDependencies[j]==targetList[k].szTarget){
 					int l=0;
 					targetList[i].child[j]=&targetList[k];
-					k=nTargetcount;
+					k=nTargetCount;
 				}
 				k++;
 			}
