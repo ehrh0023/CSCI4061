@@ -1,5 +1,5 @@
 /* CSci4061 S2016 Assignment 1							*
- * login: cselabs login name (login used to submit)		*<---------------STILL NEED TO FILL THIS OUT
+ * login: biasc007										*
  * date: 02/17/16										*
  * name: Caleb Biasco, Dennis Ehrhardt, Meghan Jonas	*
  * id: biasc007, ehrh0023, jonas050 					*/

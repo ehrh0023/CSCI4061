@@ -1,5 +1,5 @@
 /* CSci4061 S2016 Assignment 1							*
- * login: cselabs login name (login used to submit)		*<---------------STILL NEED TO FILL THIS OUT
+ * login: biasc007										*
  * date: 02/17/16										*
  * name: Caleb Biasco, Dennis Ehrhardt, Meghan Jonas	*
  * id: biasc007, ehrh0023, jonas050 					*/
@@ -35,8 +35,6 @@ int parse(char * lpszFileName)
 	FILE * fp = file_open(lpszFileName);
 	
 	int nDependencyCount = 0; // Counter for placing dependencies in array inside target
-	
-	int boolHasCommand = 0; // Boolean for checking if we already have a command
 
 	if(fp == NULL)
 	{
@@ -74,7 +72,7 @@ int parse(char * lpszFileName)
 						}
 						else
 						{
-							printf("ERROR: Illegal character on Line %d\n", nLine);
+							printf("make4061: ERROR: Illegal character on Line %d\n", nLine);
 							return -1;
 						}
 					}
@@ -85,19 +83,19 @@ int parse(char * lpszFileName)
 					// If there is no colon in line
 					if (strchr(lpszLine, ':') == NULL)
 					{
-						printf("ERROR: No target on Line %d\n", nLine);
+						printf("make4061: ERROR: No target on Line %d\n", nLine);
 						return -1;
 					}
 					
 					nTargetCount++;
 					nDependencyCount = 0;
-					boolHasCommand = 0;
+					targetList[nTargetCount-1].boolHasCommand = 0;
 
 					lpszLine = strtok(lpszLine, ":");
 					// If there is a space in the target name
 					if (strchr(lpszLine, ' '))
 					{
-						printf("ERROR: Illegal target name on Line %d\n", nLine);
+						printf("make4061: ERROR: Illegal target name on Line %d\n", nLine);
 						return -1;
 					}
 					// Check for duplicate target names
@@ -105,7 +103,7 @@ int parse(char * lpszFileName)
 					{
 						if (strcmp(lpszLine, targetList[i].szTarget) == 0)
 						{
-							printf("ERROR: Duplicate target on Line %d\n", nLine);
+							printf("make4061: ERROR: Duplicate target on Line %d\n", nLine);
 							return -1;
 						}
 					}
@@ -134,7 +132,7 @@ int parse(char * lpszFileName)
 					}
 					else
 					{
-						printf("ERROR: Illegal character on Line %d\n", nLine);
+						printf("make4061: ERROR: Illegal character on Line %d\n", nLine);
 						return -1;
 					}
 				}
@@ -146,16 +144,16 @@ int parse(char * lpszFileName)
 				if (strlen(lpszLine) > 0 && strncmp(lpszLine, "#", 1) != 0)
 				{
 					// If we already have a command
-					if (boolHasCommand) 
+					if (targetList[nTargetCount-1].boolHasCommand) 
 					{
-						printf("ERROR: Second command on Line %d\n", nLine);
+						printf("make4061: ERROR: Second command on Line %d\n", nLine);
 						return -1;
 					}
 					// If we don't have a command
 					else
 					{
 						strcpy(targetList[nTargetCount-1].szCommand, lpszLine);
-						boolHasCommand = 1;
+						targetList[nTargetCount-1].boolHasCommand = 1;
 					}
 				}
 			}
@@ -175,7 +173,7 @@ int parse(char * lpszFileName)
 				printf("\tDependency %d: %s\n", j+1, targetList[i].szDependencies[j]);
 				j++;
 			}
-			printf("\tCommand: %s\n", targetList[i].szCommand);
+			if (targetList[i].boolHasCommand) printf("\tCommand: %s\n", targetList[i].szCommand);
 			i++;
 		}
 	}
@@ -255,9 +253,17 @@ int process(target_t** target, int size)
 			else { target[j]->boolModified = 1; }
 			for (i = 0; i < target[j]->nDependencyCount; i++)
 			{
+				// If any dependencies don't exist
+				if (boolRunCommands && is_file_exist(target[j]->szDependencies[i]) == -1)
+				{
+					printf("make4061: ERROR: file '%s' doesn't exist\n", target[j]->szDependencies[i]);
+					free(cmd);
+					kill((long)getpid(), SIGKILL);
+					return -1;
+				}
 				// If any dependencies have been modified (targets and non-targets)
 				compare_times = compare_modification_time(target[j]->szTarget, target[j]->szDependencies[i]);
-				if (!target[j]->boolModified && compare_times == 2 || compare_times == -1 || (target[j]->child[i] != NULL && target[j]->child[i]->boolModified))
+				if (!target[j]->boolModified && compare_times == 2 || (compare_times == -1 && target[j]->boolHasCommand) || (target[j]->child[i] != NULL && target[j]->child[i]->boolModified))
 				{ 
 					target[j]->boolModified = 1;
 				}
@@ -267,7 +273,7 @@ int process(target_t** target, int size)
 		for (j = 0; j < size; j++)
 		{
 			// If dependencies have been modified
-			if (target[j]->boolModified && target[j]->nStatus == 0)
+			if (target[j]->boolHasCommand && target[j]->boolModified && target[j]->nStatus == 0)
 			{
 				// Building tag
 				target[j]->nStatus = 1;
@@ -286,7 +292,7 @@ int process(target_t** target, int size)
 							_exit(EXIT_FAILURE);
 						}
 					}
-					exit(3);
+					exit(0);
 					return;
 				}
 			}
@@ -297,11 +303,11 @@ int process(target_t** target, int size)
 			// If the pid is 0, don't wait
 			if (target[j]->pid)
 			{
-				err = waitpid(target[j]->pid, &stat_loc, 0);
+				waitpid(target[j]->pid, &stat_loc, 0);
 				// If a command exits with an error
-				if (err == -1) // TO DO: Break the execution tree when error occurs
+				if (WIFEXITED(stat_loc) && WEXITSTATUS(stat_loc) != 0)
 				{
-					printf("ERROR: '%s' failed\n", target[j]->szCommand);
+					printf("make4061: ERROR: '%s' failed\n", target[j]->szCommand);
 					free(cmd);
 					kill((long)getpid(), SIGKILL);
 					return -1;
@@ -315,7 +321,18 @@ int process(target_t** target, int size)
 		// Excute targets
 		for (j = 0; j < size; j++)
 		{
-			if (target[j]->nStatus == 0)
+			for (i = 0; i < target[j]->nDependencyCount; i++)
+			{
+				// If any dependencies don't exist
+				if (boolRunCommands && is_file_exist(target[j]->szDependencies[i]) == -1)
+				{
+					printf("make4061: ERROR: file '%s' doesn't exist\n", target[j]->szDependencies[i]);
+					free(cmd);
+					kill((long)getpid(), SIGKILL);
+					return -1;
+				}
+			}
+			if (target[j]->boolHasCommand && target[j]->nStatus == 0)
 			{
 				// Building tag
 				target[j]->nStatus = 1;
@@ -334,7 +351,7 @@ int process(target_t** target, int size)
 							_exit(EXIT_FAILURE);
 						}
 					}
-					exit(3);
+					exit(0);
 					return;
 				}
 			}
@@ -342,14 +359,18 @@ int process(target_t** target, int size)
 		// Wait until all forks end
 		for (j = 0; j < size; j++)
 		{
-			err = waitpid(target[j]->pid, &stat_loc, 0);
-			// If a command exits with an error
-			if (err == -1 ) // TO DO: Break the execution tree when error occurs
+			// If the pid is 0, don't wait
+			if (target[j]->pid)
 			{
-				printf("ERROR: '%s' failed\n", target[j]->szCommand);
-				free(cmd);
-				kill((long)getpid(), SIGKILL);
-				return -1;
+				waitpid(target[j]->pid, &stat_loc, 0);
+				// If a command exits with an error
+				if (WIFEXITED(stat_loc) && WEXITSTATUS(stat_loc) != 0)
+				{
+					printf("make4061: ERROR: '%s' failed\n", target[j]->szCommand);
+					free(cmd);
+					kill((long)getpid(), SIGKILL);
+					return -1;
+				}
 			}
 		}
 	}
@@ -363,6 +384,7 @@ int beginprocessing(char* t_name)
 	int i;
 	target_t* target = NULL;
 	char** cmd = (char**) malloc(sizeof(char*) * 12);
+	int status;
 
 	// Find the starting string
 	// Prep nStatus and pid
@@ -379,11 +401,24 @@ int beginprocessing(char* t_name)
 	// Run Process
 	if (target != NULL)
 	{
-		return process(&target, 1);
+		;
+		if (process(&target, 1) == -1)
+		{
+			return -1;
+		}
+		else if (boolCheckModTimes && target->boolModified == 0)
+		{
+			printf("make4061: '%s' is up to date.\n", t_name);
+			return 0;
+		}
+		else
+		{
+			return 0;
+		}
 	}
 	else
 	{
-		printf("ERROR: No target '%s'\n", t_name);
+		printf("make4061: ERROR: No target '%s'\n", t_name);
 		return -1;
 	}
 }
@@ -431,7 +466,11 @@ int main(int argc, char **argv)
 				break;
 			case 'm':
 				strcpy(szLog, strdup(optarg));
-				file = open(szLog, O_RDWR | O_CREAT | O_TRUNC);
+				if ((file = open(szLog, O_RDWR|O_CREAT|O_TRUNC, 0666)) < 0)
+				{
+					printf("make4061: ERROR: Could not open file\n");
+					return EXIT_FAILURE;
+				}
 				dup2(file, 1);
 				break;
 			case 'h':
