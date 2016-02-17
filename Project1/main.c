@@ -302,6 +302,7 @@ int process(target_t** target, int size)
 				if (err == -1) // TO DO: Break the execution tree when error occurs
 				{
 					printf("ERROR: '%s' failed\n", target[j]->szCommand);
+					free(cmd);
 					kill((long)getpid(), SIGKILL);
 					return -1;
 				}
@@ -327,7 +328,11 @@ int process(target_t** target, int size)
 					printf("%s\n", target[j]->szCommand);
 					if (boolRunCommands)
 					{
-						execvp(cmd[0], cmd);
+						err = execvp(cmd[0], cmd);
+						if(err == -1)
+						{
+							_exit(EXIT_FAILURE);
+						}
 					}
 					exit(3);
 					return;
@@ -342,6 +347,7 @@ int process(target_t** target, int size)
 			if (err == -1 ) // TO DO: Break the execution tree when error occurs
 			{
 				printf("ERROR: '%s' failed\n", target[j]->szCommand);
+				free(cmd);
 				kill((long)getpid(), SIGKILL);
 				return -1;
 			}
