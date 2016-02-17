@@ -24,7 +24,7 @@ int nTargetCount = 0; // Counter for placing targets in array
 int boolCheckModTimes = 1; // Boolean for -B command
 int boolRunCommands = 1; // Boolean for -n command
 
-// This function will parse makefile input from user or default makeFile. 
+// This function will parse makefile input from user or default makefile and build an execution graph
 int parse(char * lpszFileName)
 {
 	int i, j, k;
@@ -73,7 +73,7 @@ int parse(char * lpszFileName)
 						else
 						{
 							printf("make4061: ERROR: Illegal character on Line %d\n", nLine);
-							return -1;
+							return EXIT_FAILURE;
 						}
 					}
 					
@@ -84,7 +84,7 @@ int parse(char * lpszFileName)
 					if (strchr(lpszLine, ':') == NULL)
 					{
 						printf("make4061: ERROR: No target on Line %d\n", nLine);
-						return -1;
+						return EXIT_FAILURE;
 					}
 					
 					nTargetCount++;
@@ -96,19 +96,20 @@ int parse(char * lpszFileName)
 					if (strchr(lpszLine, ' '))
 					{
 						printf("make4061: ERROR: Illegal target name on Line %d\n", nLine);
-						return -1;
+						return EXIT_FAILURE;
 					}
-					// Check for duplicate target names
+					// If there is a duplicate target name
 					for (i = 0; i < nTargetCount-1; i++)
 					{
 						if (strcmp(lpszLine, targetList[i].szTarget) == 0)
 						{
 							printf("make4061: ERROR: Duplicate target on Line %d\n", nLine);
-							return -1;
+							return EXIT_FAILURE;
 						}
 					}
 					strcpy(targetList[nTargetCount-1].szTarget, lpszLine);
 					
+					// Add dependencies to target struct
 					lpszLine = strtok(NULL, " \t");
 					while (lpszLine != NULL)
 					{
@@ -133,7 +134,7 @@ int parse(char * lpszFileName)
 					else
 					{
 						printf("make4061: ERROR: Illegal character on Line %d\n", nLine);
-						return -1;
+						return EXIT_FAILURE;
 					}
 				}
 
@@ -147,7 +148,7 @@ int parse(char * lpszFileName)
 					if (targetList[nTargetCount-1].boolHasCommand) 
 					{
 						printf("make4061: ERROR: Second command on Line %d\n", nLine);
-						return -1;
+						return EXIT_FAILURE;
 					}
 					// If we don't have a command
 					else
@@ -204,20 +205,20 @@ int parse(char * lpszFileName)
 		i++;
 	}
 	
-	return 0;
+	return EXIT_SUCCESS;
 }
 
-
+// This function will find dependencies, compare modification times, and execute each level of the execution graph
 int process(target_t** target, int size)
 {
 	int i, j;
 	int stat_loc;
-	int success = 0;
-	int compare_times;
-	target_t* n_lvl[10];
-	int n_lvl_size = 0;
+	int boolHasChildren = 0; // Boolean for creating new level for children
+	int nCompareTimes; // Holds output for compare_modification_time method
+	target_t* nextLevel[10]; // Stores children to be executed in next level
+	int nLevelSize = 0;
 	char** cmd;
-	int err;	
+	int err;
 
 	// Create next level
 	for (j = 0; j < size; j++)
@@ -227,30 +228,32 @@ int process(target_t** target, int size)
 		{
 			if(target[j]->child[i] != NULL)
 			{
-				n_lvl[n_lvl_size] = target[j]->child[i];
-				n_lvl_size++;
-				success = 1;
+				nextLevel[nLevelSize] = target[j]->child[i];
+				nLevelSize++;
+				boolHasChildren = 1;
 			}
 		}
 	}
 	
 	cmd = (char**) malloc(sizeof(char*) * 12);
-	// Only if the next level isn't empty
-	if(success)
+	// If the next level isn't empty
+	if(boolHasChildren)
 	{
 		// Process the next level; if it fails, exit this process
-		if (process(n_lvl, n_lvl_size) == -1)
+		if (process(nextLevel, nLevelSize) == -1)
 		{
 			return -1;
 		}
 	}
-	// Check if dependencies have been modified
+	// If checking for modified dependencies
 	if (boolCheckModTimes)
 	{
 		for (j = 0; j < size; j++)
 		{
+			// If there are no dependencies, must re-compile
 			if (target[j]->nDependencyCount > 0) { target[j]->boolModified = 0; }
 			else { target[j]->boolModified = 1; }
+			
 			for (i = 0; i < target[j]->nDependencyCount; i++)
 			{
 				// If any dependencies don't exist
@@ -262,8 +265,8 @@ int process(target_t** target, int size)
 					return -1;
 				}
 				// If any dependencies have been modified (targets and non-targets)
-				compare_times = compare_modification_time(target[j]->szTarget, target[j]->szDependencies[i]);
-				if (!target[j]->boolModified && compare_times == 2 || (compare_times == -1 && target[j]->boolHasCommand) || (target[j]->child[i] != NULL && target[j]->child[i]->boolModified))
+				nCompareTimes = compare_modification_time(target[j]->szTarget, target[j]->szDependencies[i]);
+				if (!target[j]->boolModified && nCompareTimes == 2 || (nCompareTimes == -1 && target[j]->boolHasCommand) || (target[j]->child[i] != NULL && target[j]->child[i]->boolModified))
 				{ 
 					target[j]->boolModified = 1;
 				}
@@ -272,7 +275,7 @@ int process(target_t** target, int size)
 		// Execute targets
 		for (j = 0; j < size; j++)
 		{
-			// If dependencies have been modified
+			// If target has a command and dependencies have been modified
 			if (target[j]->boolHasCommand && target[j]->boolModified && target[j]->nStatus == 0)
 			{
 				// Building tag
@@ -304,6 +307,7 @@ int process(target_t** target, int size)
 			if (target[j]->pid)
 			{
 				waitpid(target[j]->pid, &stat_loc, 0);
+				
 				// If a command exits with an error
 				if (WIFEXITED(stat_loc) && WEXITSTATUS(stat_loc) != 0)
 				{
@@ -332,6 +336,7 @@ int process(target_t** target, int size)
 					return -1;
 				}
 			}
+			// If target has a command
 			if (target[j]->boolHasCommand && target[j]->nStatus == 0)
 			{
 				// Building tag
@@ -363,6 +368,7 @@ int process(target_t** target, int size)
 			if (target[j]->pid)
 			{
 				waitpid(target[j]->pid, &stat_loc, 0);
+				
 				// If a command exits with an error
 				if (WIFEXITED(stat_loc) && WEXITSTATUS(stat_loc) != 0)
 				{
@@ -378,16 +384,14 @@ int process(target_t** target, int size)
 	return 0;
 }
 
-
-int beginprocessing(char* t_name)
+// This function will check for the target and wrap all the processes
+int begin_processing(char* t_name)
 {
 	int i;
 	target_t* target = NULL;
 	char** cmd = (char**) malloc(sizeof(char*) * 12);
-	int status;
 
-	// Find the starting string
-	// Prep nStatus and pid
+	// Find the initial target and prep all statuses and pids
 	for (i = 0; i < nTargetCount; i++)
 	{
 		targetList[i].nStatus = 0;
@@ -398,14 +402,15 @@ int beginprocessing(char* t_name)
 		}
 
 	}
-	// Run Process
+	// If an initial target has been found
 	if (target != NULL)
 	{
-		;
+		// Run process
 		if (process(&target, 1) == -1)
 		{
 			return -1;
 		}
+		// If no files have been modified
 		else if (boolCheckModTimes && target->boolModified == 0)
 		{
 			printf("make4061: '%s' is up to date.\n", t_name);
@@ -426,7 +431,7 @@ int beginprocessing(char* t_name)
 void show_error_message(char * lpszFileName)
 {
 	fprintf(stderr, "Usage: %s [options] [target] : only single target is allowed.\n", lpszFileName);
-	fprintf(stderr, "-f FILE\t\tRead FILE as a maumfile.\n");
+	fprintf(stderr, "-f FILE\t\tRead FILE as a makefile.\n");
 	fprintf(stderr, "-h\t\tPrint this message and exit.\n");
 	fprintf(stderr, "-n\t\tDon't actually execute commands, just print them.\n");
 	fprintf(stderr, "-B\t\tDon't check files timestamps.\n");
@@ -448,8 +453,7 @@ int main(int argc, char **argv)
 	char szTarget[64];
 	char szLog[64];
 	
-	// File descriptor
-	int file;
+	int fd = -99;
 
 	while((ch = getopt(argc, argv, format)) != -1) 
 	{
@@ -466,12 +470,12 @@ int main(int argc, char **argv)
 				break;
 			case 'm':
 				strcpy(szLog, strdup(optarg));
-				if ((file = open(szLog, O_RDWR|O_CREAT|O_TRUNC, 0666)) < 0)
+				if ((fd = open(szLog, O_RDWR|O_CREAT|O_TRUNC, 0666)) < 0)
 				{
 					printf("make4061: ERROR: Could not open file\n");
 					return EXIT_FAILURE;
 				}
-				dup2(file, 1);
+				dup2(fd, 1);
 				break;
 			case 'h':
 			default:
@@ -502,7 +506,7 @@ int main(int argc, char **argv)
 
 
 	// Parse graph file or die
-	if((parse(szMakefile)) == -1) 
+	if((parse(szMakefile)) == EXIT_FAILURE) 
 	{
 		return EXIT_FAILURE;
 	}
@@ -510,20 +514,20 @@ int main(int argc, char **argv)
 	// Execute all processes
 	if(strcmp(szTarget, "\0") == 0)
 	{
-		if (beginprocessing(targetList[0].szTarget) == -1)
+		if (begin_processing(targetList[0].szTarget) == -1)
 		{
 			return EXIT_FAILURE;
 		}
 	}
 	else
 	{
-		if (beginprocessing(szTarget) == -1)
+		if (begin_processing(szTarget) == -1)
 		{
 			return EXIT_FAILURE;
 		}
 	}
 	
-	close(file);
+	if (fd >= 0) { close(fd); }
 	
 	return EXIT_SUCCESS;
 }
