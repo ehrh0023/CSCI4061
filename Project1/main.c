@@ -127,7 +127,7 @@ int parse(char * lpszFileName)
 				// Check for any illegal characters in line
 				while (strlen(lpszLine) > 0) 
 				{
-					if (isalnum(*lpszLine) || isblank(*lpszLine) || strchr("-.'\"", *lpszLine))
+					if (isalnum(*lpszLine) || isblank(*lpszLine) || strchr("-.'\"?!", *lpszLine))
 					{
 						lpszLine++;
 					}
@@ -211,9 +211,10 @@ int parse(char * lpszFileName)
 // This function will find dependencies, compare modification times, and execute each level of the execution graph
 int process(target_t** target, int size)
 {
-	int i, j;
+	int i, j, k;
 	int stat_loc;
 	int boolHasChildren = 0; // Boolean for creating new level for children
+	int boolIsTarget; // Boolean for checking target and file existence
 	int nCompareTimes; // Holds output for compare_modification_time method
 	target_t* nextLevel[10]; // Stores children to be executed in next level
 	int nLevelSize = 0;
@@ -226,7 +227,7 @@ int process(target_t** target, int size)
 		// Add children
 		for (i = 0; i < target[j]->nDependencyCount; i++)
 		{
-			if(target[j]->child[i] != NULL)
+			if (target[j]->child[i] != NULL)
 			{
 				nextLevel[nLevelSize] = target[j]->child[i];
 				nLevelSize++;
@@ -250,16 +251,27 @@ int process(target_t** target, int size)
 	{
 		for (j = 0; j < size; j++)
 		{
-			// If there are no dependencies, must re-compile
+			// If there are no dependencies, must re-build
 			if (target[j]->nDependencyCount > 0) { target[j]->boolModified = 0; }
 			else { target[j]->boolModified = 1; }
 			
 			for (i = 0; i < target[j]->nDependencyCount; i++)
 			{
-				// If any dependencies don't exist
-				if (boolRunCommands && is_file_exist(target[j]->szDependencies[i]) == -1)
+				// Check if the dependency is a target 
+				boolIsTarget = 0;
+				for (k = 0; k < target[j]->nDependencyCount; k++)
 				{
-					printf("make4061: ERROR: file '%s' doesn't exist\n", target[j]->szDependencies[i]);
+					if (target[j]->child[k] == NULL) { k = target[j]->nDependencyCount; }
+					else if (strcmp(target[j]->szDependencies[i], target[j]->child[k]->szTarget) == 0)
+					{
+						boolIsTarget = 1;
+						k = target[j]->nDependencyCount;
+					}
+				}
+				// If a non-target dependency doesn't exist
+				if (!boolIsTarget && is_file_exist(target[j]->szDependencies[i]) == -1)
+				{
+					printf("make4061: ERROR: no rule for '%s'\n", target[j]->szDependencies[i]);
 					free(cmd);
 					kill((long)getpid(), SIGKILL);
 					return -1;
@@ -327,10 +339,21 @@ int process(target_t** target, int size)
 		{
 			for (i = 0; i < target[j]->nDependencyCount; i++)
 			{
-				// If any dependencies don't exist
-				if (boolRunCommands && is_file_exist(target[j]->szDependencies[i]) == -1)
+				// Check if the dependency is a target
+				boolIsTarget = 0;
+				for (k = 0; k < target[j]->nDependencyCount; k++)
 				{
-					printf("make4061: ERROR: file '%s' doesn't exist\n", target[j]->szDependencies[i]);
+					if (target[j]->child[k] == NULL) { k = target[j]->nDependencyCount; }
+					else if (strcmp(target[j]->szDependencies[i], target[j]->child[k]->szTarget) == 0)
+					{
+						boolIsTarget = 1;
+						k = target[j]->nDependencyCount;
+					}
+				}
+				// If a non-target dependency doesn't exist
+				if (!boolIsTarget && is_file_exist(target[j]->szDependencies[i]) == -1)
+				{
+					printf("make4061: ERROR: no rule for '%s'\n", target[j]->szDependencies[i]);
 					free(cmd);
 					kill((long)getpid(), SIGKILL);
 					return -1;
