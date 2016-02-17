@@ -1,3 +1,11 @@
+/* CSci4061 S2016 Assignment 1							*
+ * login: cselabs login name (login used to submit)		*<---------------STILL NEED TO FILL THIS OUT
+ * date: 02/17/16										*
+ * name: Caleb Biasco, Dennis Ehrhardt, Meghan Jonas	*
+ * id: biasc007, ehrh0023, jonas050 					*/
+
+ 
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -14,6 +22,7 @@
 target_t targetList[MAX_NODES]; // Array of target structs
 int nTargetCount = 0; // Counter for placing targets in array
 int boolCheckModTimes = 1; // Boolean for -B command
+int boolRunCommands = 1; // Boolean for -n command
 
 // This function will parse makefile input from user or default makeFile. 
 int parse(char * lpszFileName)
@@ -201,20 +210,20 @@ int parse(char * lpszFileName)
 }
 
 
-void process(target_t** target, int size)
+int process(target_t** target, int size)
 {
 	int i, j;
 	int stat_loc;
 	int success = 0;
+	int compare_times;
 	target_t* n_lvl[10];
 	int n_lvl_size = 0;
 	char** cmd;
 	
-	// Create Next Level
+	// Create next level
 	for (j = 0; j < size; j++)
 	{
-
-		// Add Children
+		// Add children
 		for (i = 0; i < target[j]->nDependencyCount; i++)
 		{
 			if(target[j]->child[i] != NULL)
@@ -230,20 +239,25 @@ void process(target_t** target, int size)
 	// Only if the next level isn't empty
 	if(success)
 	{
-		// Process the next level
-		process(n_lvl, n_lvl_size);
+		// Process the next level; if it fails, exit this process
+		if (process(n_lvl, n_lvl_size) == -1)
+		{
+			return -1;
+		}
 	}
 	// Check if dependencies have been modified
 	if (boolCheckModTimes)
 	{
 		for (j = 0; j < size; j++)
 		{
-			if (target[j]->nDependencyCount) { target[j]->boolModified = 0; }
+			if (target[j]->nDependencyCount > 0) { target[j]->boolModified = 0; }
 			else { target[j]->boolModified = 1; }
 			for (i = 0; i < target[j]->nDependencyCount; i++)
 			{
-				if (!target[j]->boolModified && (compare_modification_time(target[j]->szCommand, target[j]->szDependencies[i]) == 2 || (target[j]->child[i] != NULL && target[j]->child[i]->boolModified)))
-				{
+				// If any dependencies have been modified (targets and non-targets)
+				compare_times = compare_modification_time(target[j]->szTarget, target[j]->szDependencies[i]);
+				if (!target[j]->boolModified && compare_times == 2 || compare_times == -1 || (target[j]->child[i] != NULL && target[j]->child[i]->boolModified))
+				{ 
 					target[j]->boolModified = 1;
 				}
 			}
@@ -262,7 +276,13 @@ void process(target_t** target, int size)
 				if (target[j]->pid == 0)
 				{
 					makeargv(target[j]->szCommand, " ", &cmd);
-					execvp(cmd[0], cmd);
+					printf("%s\n", target[j]->szCommand);
+					if (boolRunCommands)
+					{
+						execvp(cmd[0], cmd);
+					}
+					exit(3);
+					return;
 				}
 			}
 		}
@@ -270,9 +290,19 @@ void process(target_t** target, int size)
 		for (j = 0; j < size; j++)
 		{
 			// If the pid is 0, don't wait
-			if (!target[j]->pid) { waitpid(target[j]->pid, &stat_loc, 0); }
+			if (target[j]->pid)
+			{
+				waitpid(target[j]->pid, &stat_loc, 0);
+				// If a command exits with an error
+				if (0) // TO DO: Break the execution tree when error occurs
+				{
+					printf("ERROR: '%s' failed\n", target[j]->szCommand);
+					return -1;
+				}
+			}
 		}
 	}
+	// If not checking for modifications
 	else
 	{
 		// Excute targets
@@ -288,21 +318,34 @@ void process(target_t** target, int size)
 				if (target[j]->pid == 0)
 				{
 					makeargv(target[j]->szCommand, " ", &cmd);
-					execvp(cmd[0], cmd);
+					printf("%s\n", target[j]->szCommand);
+					if (boolRunCommands)
+					{
+						execvp(cmd[0], cmd);
+					}
+					exit(3);
+					return;
 				}
 			}
 		}
 		// Wait until all forks end
 		for (j = 0; j < size; j++)
 		{
-			waitpid(target[j]->pid, &stat_loc, 0);	
+			waitpid(target[j]->pid, &stat_loc, 0);
+			// If a command exits with an error
+			if (0) // TO DO: Break the execution tree when error occurs
+			{
+				printf("ERROR: '%s' failed\n", target[j]->szCommand);
+				return -1;
+			}
 		}
 	}
 	free(cmd);
+	return 0;
 }
 
 
-void beginprocessing(char* t_name)
+int beginprocessing(char* t_name)
 {
 	int i;
 	target_t* target = NULL;
@@ -323,7 +366,12 @@ void beginprocessing(char* t_name)
 	// Run Process
 	if (target != NULL)
 	{
-		process(&target, 1);
+		return process(&target, 1);
+	}
+	else
+	{
+		printf("ERROR: No target '%s'\n", t_name);
+		return -1;
 	}
 }
 
@@ -351,6 +399,9 @@ int main(int argc, char **argv)
 	char szMakefile[64] = "Makefile";
 	char szTarget[64];
 	char szLog[64];
+	
+	// File descriptor
+	int file;
 
 	while((ch = getopt(argc, argv, format)) != -1) 
 	{
@@ -360,12 +411,15 @@ int main(int argc, char **argv)
 				strcpy(szMakefile, strdup(optarg));
 				break;
 			case 'n':
+				boolRunCommands = 0;
 				break;
 			case 'B':
 				boolCheckModTimes = 0;
 				break;
 			case 'm':
 				strcpy(szLog, strdup(optarg));
+				file = open(szLog, O_RDWR | O_CREAT | O_TRUNC);
+				dup2(file, 1);
 				break;
 			case 'h':
 			default:
@@ -404,12 +458,20 @@ int main(int argc, char **argv)
 	// Execute all processes
 	if(strcmp(szTarget, "\0") == 0)
 	{
-		beginprocessing(targetList[0].szTarget);
+		if (beginprocessing(targetList[0].szTarget) == -1)
+		{
+			return EXIT_FAILURE;
+		}
 	}
 	else
 	{
-		beginprocessing(szTarget);
+		if (beginprocessing(szTarget) == -1)
+		{
+			return EXIT_FAILURE;
+		}
 	}
+	
+	close(file);
 	
 	return EXIT_SUCCESS;
 }
