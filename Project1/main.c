@@ -219,7 +219,8 @@ int process(target_t** target, int size)
 	target_t* n_lvl[10];
 	int n_lvl_size = 0;
 	char** cmd;
-	
+	int err;	
+
 	// Create next level
 	for (j = 0; j < size; j++)
 	{
@@ -279,7 +280,11 @@ int process(target_t** target, int size)
 					printf("%s\n", target[j]->szCommand);
 					if (boolRunCommands)
 					{
-						execvp(cmd[0], cmd);
+						err = execvp(cmd[0], cmd);
+						if(err == -1)
+						{
+							_exit(EXIT_FAILURE);
+						}
 					}
 					exit(3);
 					return;
@@ -292,11 +297,12 @@ int process(target_t** target, int size)
 			// If the pid is 0, don't wait
 			if (target[j]->pid)
 			{
-				waitpid(target[j]->pid, &stat_loc, 0);
+				err = waitpid(target[j]->pid, &stat_loc, 0);
 				// If a command exits with an error
-				if (0) // TO DO: Break the execution tree when error occurs
+				if (err == -1) // TO DO: Break the execution tree when error occurs
 				{
 					printf("ERROR: '%s' failed\n", target[j]->szCommand);
+					kill((long)getpid(), SIGKILL);
 					return -1;
 				}
 			}
@@ -331,11 +337,12 @@ int process(target_t** target, int size)
 		// Wait until all forks end
 		for (j = 0; j < size; j++)
 		{
-			waitpid(target[j]->pid, &stat_loc, 0);
+			err = waitpid(target[j]->pid, &stat_loc, 0);
 			// If a command exits with an error
-			if (0) // TO DO: Break the execution tree when error occurs
+			if (err == -1 ) // TO DO: Break the execution tree when error occurs
 			{
 				printf("ERROR: '%s' failed\n", target[j]->szCommand);
+				kill((long)getpid(), SIGKILL);
 				return -1;
 			}
 		}
