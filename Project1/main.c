@@ -9,33 +9,25 @@
 
 #include "util.h"
 
-#define DEBUG 1
+#define DEBUG 0
 
+target_t targetList[MAX_NODES]; // Array of target structs
+int nTargetCount = 0; // Counter for placing targets in array
+int boolCheckModTimes = 1; // Boolean for -B command
 
-struct node{
-	target_t name;
-	//struct node *parent[MAX_NODES];
-	struct node *child[MAX_CHILDREN];
-	int boolRun; //Check if a process has been run yet.
-};
-
-struct node graphRoot;
-
-target_t targetList[MAX_NODES]; //Array of target structs
-int nTargetCount=-1; //Counter for placing targets in array
-
-//This function will parse makefile input from user or default makeFile. 
+// This function will parse makefile input from user or default makeFile. 
 int parse(char * lpszFileName)
 {
+	int i, j, k;
 	int nLine = 0;
 	char szLine[1024];
 	char * lpszLine;
 
 	FILE * fp = file_open(lpszFileName);
 	
-	int nDependencyCount=0; //Counter for placing dependencies in array inside target
+	int nDependencyCount = 0; // Counter for placing dependencies in array inside target
 	
-	int boolHasCommand = 0; //Boolean for checking if we already have a command
+	int boolHasCommand = 0; // Boolean for checking if we already have a command
 
 	if(fp == NULL)
 	{
@@ -46,17 +38,21 @@ int parse(char * lpszFileName)
 	{
 		nLine++;
 
-		//Remove newline character at end if there is one
+		// Remove newline character at end if there is one
 		lpszLine = strtok(szLine, "\n");
 
-		if (lpszLine != NULL) //Checks if "blank line"
+		// Checks if "blank line"
+		if (lpszLine != NULL)
 		{
-			if (strncmp(lpszLine, "\t", 1) != 0) //If there is no leading tab
+			// If there is no leading tab
+			if (strncmp(lpszLine, "\t", 1) != 0)
 			{
-				if (strncmp(lpszLine, "#", 1) != 0) //If the line is not a comment
+				// If the line is not a comment
+				if (strncmp(lpszLine, "#", 1) != 0)
 				{
+					// Check for any illegal characters in line
 					int boolHasColon = 0;
-					while (strlen(lpszLine) > 0) //Check for any illegal characters in line
+					while (strlen(lpszLine) > 0)
 					{
 						if (isalnum(*lpszLine) || isblank(*lpszLine) || *lpszLine == '.')
 						{
@@ -75,8 +71,10 @@ int parse(char * lpszFileName)
 					}
 					
 					lpszLine = szLine;
-					while (*lpszLine == ' ') {lpszLine++;} //Skip all leading spaces
-					if (strchr(lpszLine, ':') == NULL) //If there is no colon in line
+					// Skip all leading spaces
+					while (*lpszLine == ' ') {lpszLine++;}
+					// If there is no colon in line
+					if (strchr(lpszLine, ':') == NULL)
 					{
 						printf("ERROR: No target on Line %d\n", nLine);
 						return -1;
@@ -87,13 +85,14 @@ int parse(char * lpszFileName)
 					boolHasCommand = 0;
 
 					lpszLine = strtok(lpszLine, ":");
-					if (strchr(lpszLine, ' ')) //If there is a space in the target name
+					// If there is a space in the target name
+					if (strchr(lpszLine, ' '))
 					{
 						printf("ERROR: Illegal target name on Line %d\n", nLine);
 						return -1;
 					}
-					int i;
-					for (i = 0; i < nTargetCount; i++) //Check for duplicate target names
+					// Check for duplicate target names
+					for (i = 0; i < nTargetCount-1; i++)
 					{
 						if (strcmp(lpszLine, targetList[i].szTarget) == 0)
 						{
@@ -101,22 +100,24 @@ int parse(char * lpszFileName)
 							return -1;
 						}
 					}
-					strcpy(targetList[nTargetCount].szTarget, lpszLine);
+					strcpy(targetList[nTargetCount-1].szTarget, lpszLine);
 					
 					lpszLine = strtok(NULL, " \t");
 					while (lpszLine != NULL)
 					{
-						strcpy(targetList[nTargetCount].szDependencies[nDependencyCount], lpszLine);
+						strcpy(targetList[nTargetCount-1].szDependencies[nDependencyCount], lpszLine);
 						nDependencyCount++;
 						lpszLine = strtok(NULL, " \t");
 					}
-					targetList[nTargetCount].nDependencyCount = nDependencyCount;
+					targetList[nTargetCount-1].nDependencyCount = nDependencyCount;
 					nDependencyCount = 0;
 				}
 			}
-			else //If there is a leading tab
+			// If there is a leading tab
+			else
 			{
-				while (strlen(lpszLine) > 0) //Check for any illegal characters in line
+				// Check for any illegal characters in line
+				while (strlen(lpszLine) > 0) 
 				{
 					if (isalnum(*lpszLine) || isblank(*lpszLine) || strchr("-.'\"", *lpszLine))
 					{
@@ -130,17 +131,21 @@ int parse(char * lpszFileName)
 				}
 
 				lpszLine = szLine;
-				while (isspace(*lpszLine)) {lpszLine++;} //Skip all leading whitespace
-				if (strlen(lpszLine) > 0 && strncmp(lpszLine, "#", 1) != 0) //If the line is not empty or a comment
+				// Skip all leading whitespace
+				while (isspace(*lpszLine)) {lpszLine++;}
+				// If the line is not empty or a comment
+				if (strlen(lpszLine) > 0 && strncmp(lpszLine, "#", 1) != 0)
 				{
-					if (boolHasCommand) //If we already have a command
+					// If we already have a command
+					if (boolHasCommand) 
 					{
 						printf("ERROR: Second command on Line %d\n", nLine);
 						return -1;
 					}
-					else //If we don't have a command
+					// If we don't have a command
+					else
 					{
-						strcpy(targetList[nTargetCount].szCommand, lpszLine);
+						strcpy(targetList[nTargetCount-1].szCommand, lpszLine);
 						boolHasCommand = 1;
 					}
 				}
@@ -148,16 +153,16 @@ int parse(char * lpszFileName)
 		}
 	}
 	
-	//DEBUG CODE: Prints the target information to terminal
+	// DEBUG CODE: Prints the target information to terminal
 	if (DEBUG)
 	{
-		int i = 0;
-		while (nTargetCount >= i)
+		i = 0;
+		while (i < nTargetCount)
 		{
 			printf("%d: %s\n", i+1, targetList[i].szTarget);
 			nDependencyCount = targetList[i].nDependencyCount;
-			int j = 0;
-			while (nDependencyCount > j) {
+			j = 0;
+			while (j < nDependencyCount) {
 				printf("\tDependency %d: %s\n", j+1, targetList[i].szDependencies[j]);
 				j++;
 			}
@@ -166,48 +171,24 @@ int parse(char * lpszFileName)
 		}
 	}
 
-	//Close the makefile. 
+	// Close the makefile. 
 	fclose(fp);
 
-/*
-	//Building graph here, to use all these instance vars.
-	struct node tempnodes[nTargetCount];
-	int i=0;
-	while(i<nTargetCount){
-		tempnodes[i]=new struct node();
-		tempnodes[i].name= targetList[i].szCommand;
-		i++;
-	}
-	int temp =0;
-	int temp1 =0;
-	struct node tempnod = NULL;
-	char * tempstr = NULL;
-	i =0;
-	while(i<nTargetCount){
-		if(targetList[i].nDependencyCount == 0){
-			graphRoot.child[temp]= *tempnodes[i];
-			temp++;
-		}
-		i++;
-	}
-	temp=0;
-	i =0;
-	while(i< nTargetCount){
-		tempnod=targetList[i];
-		temp=tempnod.nDependencyCount;
-		int j=0;
-		while(j<temp){
-			tempstr= tempnod.szDependencies[j];
-			int k=0;
-			while(k< nTargetCount){
-				if(tempstr==targetList[k].szCommand){
-					int l=0;
-					while(tempnodes[k].child[l]!=null) l++;
-					tempnodes[k].child[l]= *tempnod;
-					l=0;
-					while(tempnod.parent[l]!=null) l++;
-					tempnod.parent[l]= *tempnodes[k];
-					k= nTargetCount;
+	// Build the graph
+	i = 0;
+	while (i < nTargetCount)
+	{
+		j = 0;
+		while (j < targetList[i].nDependencyCount)
+		{
+			k = 0;
+			targetList[i].child[j] = NULL;
+			while (k < nTargetCount)
+			{
+				if (strcmp(targetList[i].szDependencies[j], targetList[k].szTarget) == 0)
+				{
+					targetList[i].child[j] = &targetList[k];
+					k = nTargetCount;
 				}
 				k++;
 			}
@@ -215,36 +196,7 @@ int parse(char * lpszFileName)
 		}
 		i++;
 	}
-*/
-
-
-	//Graph
 	
-	int i=0;
-	int found;
-	char tempchar[64];
-
-	//node temparray[100];
-	while(i<nTargetCount){
-		int j=0;
-		while(j<targetList[i].nDependencyCount){
-			int k=0;
-			targetList[i].child[j]=NULL;
-			while(k<nTargetCount){
-				if(strcmp(targetList[i].szDependencies[j], targetList[k].szTarget)== 0 ){
-					int l=0;
-					targetList[i].child[j]=&targetList[k];
-					k=nTargetCount;
-				}
-				k++;
-			}
-			j++;
-		}
-		i++;
-	}
-
-	//delete temp, temp1, tempnod, tempstr; //may also delete tempnodes pointers, since nodes are now linked via graphRoot.
-
 	return 0;
 }
 
@@ -257,7 +209,7 @@ void process(target_t** target, int size)
 	target_t* n_lvl[10];
 	int n_lvl_size = 0;
 	char** cmd;
-
+	
 	// Create Next Level
 	for (j = 0; j < size; j++)
 	{
@@ -269,8 +221,8 @@ void process(target_t** target, int size)
 			{
 				n_lvl[n_lvl_size] = target[j]->child[i];
 				n_lvl_size++;
+				success = 1;
 			}
-			success = 1;
 		}
 	}
 	
@@ -278,24 +230,65 @@ void process(target_t** target, int size)
 	// Only if the next level isn't empty
 	if(success)
 	{
-		// process the next level
+		// Process the next level
 		process(n_lvl, n_lvl_size);
-		
-		// Excute targets
+	}
+	// Check if dependencies have been modified
+	if (boolCheckModTimes)
+	{
 		for (j = 0; j < size; j++)
 		{
-			if(target[j]->nStatus == 0)
+			if (target[j]->nDependencyCount) { target[j]->boolModified = 0; }
+			else { target[j]->boolModified = 1; }
+			for (i = 0; i < target[j]->nDependencyCount; i++)
 			{
-				// Building Tag
+				if (!target[j]->boolModified && (compare_modification_time(target[j]->szCommand, target[j]->szDependencies[i]) == 2 || (target[j]->child[i] != NULL && target[j]->child[i]->boolModified)))
+				{
+					target[j]->boolModified = 1;
+				}
+			}
+		}
+		// Execute targets
+		for (j = 0; j < size; j++)
+		{
+			// If dependencies have been modified
+			if (target[j]->boolModified && target[j]->nStatus == 0)
+			{
+				// Building tag
 				target[j]->nStatus = 1;
 				
 				// Fork and execute
 				target[j]->pid = fork();
-				if(target[j]->pid == 0)
+				if (target[j]->pid == 0)
 				{
 					makeargv(target[j]->szCommand, " ", &cmd);
 					execvp(cmd[0], cmd);
-					return;
+				}
+			}
+		}
+		// Wait until all forks end
+		for (j = 0; j < size; j++)
+		{
+			// If the pid is 0, don't wait
+			if (!target[j]->pid) { waitpid(target[j]->pid, &stat_loc, 0); }
+		}
+	}
+	else
+	{
+		// Excute targets
+		for (j = 0; j < size; j++)
+		{
+			if (target[j]->nStatus == 0)
+			{
+				// Building tag
+				target[j]->nStatus = 1;
+				
+				// Fork and execute
+				target[j]->pid = fork();
+				if (target[j]->pid == 0)
+				{
+					makeargv(target[j]->szCommand, " ", &cmd);
+					execvp(cmd[0], cmd);
 				}
 			}
 		}
@@ -306,16 +299,17 @@ void process(target_t** target, int size)
 		}
 	}
 	free(cmd);
- }
+}
 
 
 void beginprocessing(char* t_name)
 {
 	int i;
 	target_t* target = NULL;
+	char** cmd = (char**) malloc(sizeof(char*) * 12);
 
 	// Find the starting string
-	// Prep Status and pid
+	// Prep nStatus and pid
 	for (i = 0; i < nTargetCount; i++)
 	{
 		targetList[i].nStatus = 0;
@@ -354,7 +348,7 @@ int main(int argc, char **argv)
 	char * format = "f:hnBm:";
 	
 	// Default makefile name will be Makefile
-	char szMakefile[64] = "./testcases/make_testcase/Makefile"; // default is Makefile
+	char szMakefile[64] = "Makefile";
 	char szTarget[64];
 	char szLog[64];
 
@@ -368,6 +362,7 @@ int main(int argc, char **argv)
 			case 'n':
 				break;
 			case 'B':
+				boolCheckModTimes = 0;
 				break;
 			case 'm':
 				strcpy(szLog, strdup(optarg));
@@ -382,20 +377,14 @@ int main(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
-	// at this point, what is left in argv is the targets that were 
-	// specified on the command line. argc has the number of them.
-	// If getopt is still really confusing,
-	// try printing out what's in argv right here, then just running 
-	// with various command-line arguments.
-
+	// If there are still arguments, kill the program
 	if(argc > 1)
 	{
 		show_error_message(argv[0]);
 		return EXIT_FAILURE;
 	}
 
-	//You may start your program by setting the target that make4061 should build.
-	//if target is not set, set it to default (first target from makefile)
+	// If target is not set, set it to default (first target from makefile)
 	if(argc == 1)
 	{
 		strncpy(szTarget, argv[0], 64);
@@ -406,15 +395,13 @@ int main(int argc, char **argv)
 	}
 
 
-	/* Parse graph file or die */
+	// Parse graph file or die
 	if((parse(szMakefile)) == -1) 
 	{
 		return EXIT_FAILURE;
 	}
 
-	//after parsing the file, you'll want to check all dependencies (whether they are available targets or files)
-	//then execute all of the targets that were specified on the command line, along with their dependencies, etc.
-	
+	// Execute all processes
 	if(strcmp(szTarget, "\0") == 0)
 	{
 		beginprocessing(targetList[0].szTarget);

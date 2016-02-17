@@ -39,6 +39,7 @@ typedef struct target{
 	char szCommand[64];
 	int nStatus;
 	struct target *child[10];
+	int boolModified;
 }target_t;
 
 int makeargv(const char *s, const char *delimiters, char ***argvp);

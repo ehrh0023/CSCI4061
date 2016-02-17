@@ -7,7 +7,7 @@ make4061: util.a main.o
 main.o: main.c
 	gcc -c main.c
 
-util.a: parse.o cal.o 
+util.a: parse.o cal.o
 	ar rcs util.a parse.o cal.o
 
 cal.o: cal.c
