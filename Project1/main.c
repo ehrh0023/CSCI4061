@@ -272,6 +272,7 @@ int process(target_t** target, int size)
 				if (!boolIsTarget && is_file_exist(target[j]->szDependencies[i]) == -1)
 				{
 					printf("make4061: ERROR: no rule for '%s'\n", target[j]->szDependencies[i]);
+					fflush(NULL);
 					free(cmd);
 					kill((long)getpid(), SIGKILL);
 					return -1;
@@ -294,11 +295,12 @@ int process(target_t** target, int size)
 				target[j]->nStatus = 1;
 				
 				// Fork and execute
+				printf("%s\n", target[j]->szCommand);
+				fflush(NULL);
 				target[j]->pid = fork();
 				if (target[j]->pid == 0)
 				{
 					makeargv(target[j]->szCommand, " ", &cmd);
-					printf("%s\n", target[j]->szCommand);
 					if (boolRunCommands)
 					{
 						err = execvp(cmd[0], cmd);
@@ -324,6 +326,7 @@ int process(target_t** target, int size)
 				if (WIFEXITED(stat_loc) && WEXITSTATUS(stat_loc) != 0)
 				{
 					printf("make4061: ERROR: '%s' failed\n", target[j]->szCommand);
+					fflush(NULL);
 					free(cmd);
 					kill((long)getpid(), SIGKILL);
 					return -1;
@@ -366,11 +369,12 @@ int process(target_t** target, int size)
 				target[j]->nStatus = 1;
 				
 				// Fork and execute
+				printf("%s\n", target[j]->szCommand);
+				fflush(NULL);
 				target[j]->pid = fork();
 				if (target[j]->pid == 0)
 				{
 					makeargv(target[j]->szCommand, " ", &cmd);
-					printf("%s\n", target[j]->szCommand);
 					if (boolRunCommands)
 					{
 						err = execvp(cmd[0], cmd);
@@ -396,6 +400,7 @@ int process(target_t** target, int size)
 				if (WIFEXITED(stat_loc) && WEXITSTATUS(stat_loc) != 0)
 				{
 					printf("make4061: ERROR: '%s' failed\n", target[j]->szCommand);
+					fflush(NULL);
 					free(cmd);
 					kill((long)getpid(), SIGKILL);
 					return -1;
@@ -437,6 +442,7 @@ int begin_processing(char* t_name)
 		else if (boolCheckModTimes && target->boolModified == 0)
 		{
 			printf("make4061: '%s' is up to date.\n", t_name);
+			fflush(NULL);
 			return 0;
 		}
 		else
@@ -447,6 +453,7 @@ int begin_processing(char* t_name)
 	else
 	{
 		printf("make4061: ERROR: No target '%s'\n", t_name);
+		fflush(NULL);
 		return -1;
 	}
 }
@@ -476,7 +483,7 @@ int main(int argc, char **argv)
 	char szTarget[64];
 	char szLog[64];
 	
-	int fd = -99;
+	int fd;
 
 	while((ch = getopt(argc, argv, format)) != -1) 
 	{
@@ -499,6 +506,7 @@ int main(int argc, char **argv)
 					return EXIT_FAILURE;
 				}
 				dup2(fd, 1);
+				close(fd);
 				break;
 			case 'h':
 			default:
@@ -549,8 +557,6 @@ int main(int argc, char **argv)
 			return EXIT_FAILURE;
 		}
 	}
-	
-	if (fd >= 0) { close(fd); }
 	
 	return EXIT_SUCCESS;
 }
