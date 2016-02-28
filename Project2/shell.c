@@ -21,12 +21,19 @@ char *sh_read_line(void)
  */
 int sh_handle_input(char *line, int fd_toserver)
 {
-	
+	char* n = NULL;
 	/***** Insert YOUR code *******/
-	
  	/* Check for \seg command and create segfault */
-	
+	if(starts_with(line, "\seg"))
+	{
+		*n = 1;
+		
+	}
 	/* Write message to server for processing */
+	else
+	{
+		write(ends[1], line, MSGSIZE);
+	}
 	return 0;
 }
 
@@ -49,25 +56,64 @@ int is_empty(char *line)
  */
 void sh_start(char *name, int fd_toserver)
 {
+	char msg[MSGSIZE];
 	/***** Insert YOUR code *******/
+	while(1)
+	{
+		printf("%s >> ", name);
+		scanf("%s", msg);
+		if(!is_empty(msg))
+		{	
+			sh_handle_input(msg, fd_toserver);
+		}
+	}
 }
 
 int main(int argc, char **argv)
 {
-	
+	int pid;
+	int ends[2];
+	char msg[MSGSIZE];
+	char* name;
 	/***** Insert YOUR code *******/
 	
 	/* Extract pipe descriptors and name from argv */
-
+	if(argc <= 3)
+	{
+		return EXIT_FAILURE;
+	}
+	ends[0] = atoi(argv[1]);
+	ends[1] = atoi(argv[2]);
+	name - argv[3];
+	
 	/* Fork a child to read from the pipe continuously */
-
+	pid = fork();
+	if(pid == -1)
+	{
+		return EXIT_FAILURE;
+	}
 	/*
 	 * Once inside the child
 	 * look for new data from server every 1000 usecs and print it
 	 */ 
-
+	if(pid == 0)
+	{
+		while(1)
+		{
+			if(read(ends[0], msg, MSGSIZE) > 0);
+				printf("%s", msg);
+			usleep(1000);
+		}
+	}
 	/* Inside the parent
 	 * Send the child's pid to the server for later cleanup
 	 * Start the main shell loop
 	 */
+	 else
+	 {
+		 sprintf(msg, "%d", pid);
+		 write(ends[1], msg, MSGSIZE);
+		 sh_start(name, ends[1]);
+	 }
+	 return EXIT_SUCCESS;
 }
