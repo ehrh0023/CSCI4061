@@ -24,7 +24,7 @@ int sh_handle_input(char *line, int fd_toserver)
 	char* n = NULL;
 	/***** Insert YOUR code *******/
  	/* Check for \seg command and create segfault */
-	if(starts_with(line, "\seg"))
+	if(starts_with(line, "\\seg"))
 	{
 		*n = 1;
 		
@@ -32,7 +32,7 @@ int sh_handle_input(char *line, int fd_toserver)
 	/* Write message to server for processing */
 	else
 	{
-		write(ends[1], line, MSGSIZE);
+		write(fd_toserver, line, MSG_SIZE);
 	}
 	return 0;
 }
@@ -56,7 +56,7 @@ int is_empty(char *line)
  */
 void sh_start(char *name, int fd_toserver)
 {
-	char msg[MSGSIZE];
+	char msg[MSG_SIZE];
 	/***** Insert YOUR code *******/
 	while(1)
 	{
@@ -73,7 +73,7 @@ int main(int argc, char **argv)
 {
 	int pid;
 	int ends[2];
-	char msg[MSGSIZE];
+	char msg[MSG_SIZE];
 	char* name;
 	/***** Insert YOUR code *******/
 	
@@ -100,7 +100,7 @@ int main(int argc, char **argv)
 	{
 		while(1)
 		{
-			if(read(ends[0], msg, MSGSIZE) > 0);
+			if(read(ends[0], msg, MSG_SIZE) > 0);
 				printf("%s", msg);
 			usleep(1000);
 		}
@@ -112,7 +112,7 @@ int main(int argc, char **argv)
 	 else
 	 {
 		 sprintf(msg, "%d", pid);
-		 write(ends[1], msg, MSGSIZE);
+		 write(ends[1], msg, MSG_SIZE);
 		 sh_start(name, ends[1]);
 	 }
 	 return EXIT_SUCCESS;
