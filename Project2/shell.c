@@ -75,7 +75,6 @@ int main(int argc, char **argv)
 	int ends[2];
 	char msg[MSG_SIZE];
 	char* name;
-	/***** Insert YOUR code *******/
 	
 	/* Extract pipe descriptors and name from argv */
 	if(argc <= 3)
@@ -84,7 +83,7 @@ int main(int argc, char **argv)
 	}
 	ends[0] = atoi(argv[1]);
 	ends[1] = atoi(argv[2]);
-	name - argv[3];
+	name = argv[3];
 	
 	/* Fork a child to read from the pipe continuously */
 	pid = fork();
@@ -100,7 +99,7 @@ int main(int argc, char **argv)
 	{
 		while(1)
 		{
-			if(read(ends[0], msg, MSG_SIZE) > 0);
+			if(read(ends[0], msg, MSG_SIZE) > 0)
 				printf("%s", msg);
 			usleep(1000);
 		}
@@ -111,9 +110,9 @@ int main(int argc, char **argv)
 	 */
 	 else
 	 {
-		 sprintf(msg, "%d", pid);
-		 write(ends[1], msg, MSG_SIZE);
-		 sh_start(name, ends[1]);
+		sprintf(msg, "%d", pid);
+		write(ends[1], msg, MSG_SIZE);
+		sh_start(name, ends[1]);
 	 }
 	 return EXIT_SUCCESS;
 }
