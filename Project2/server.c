@@ -319,11 +319,6 @@ int main(int argc, char **argv)
 			/* Fork a process if a user was added (ADD_USER) */
 				case ADD_USER :
 					strcpy(msg, extract_name(ADD_USER, msg));
-					if (msg == NULL) // NEED TO CHECK FOR VALID NAME
-					{
-						write(server.ptoc[1], "ERROR: invalid name", MSG_SIZE);
-						break;
-					}
 					err = add_user(user_list, msg, server.ptoc[1]);
 					if (err == 99)
 					{
