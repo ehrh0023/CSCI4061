@@ -24,7 +24,7 @@ int sh_handle_input(char *line, int fd_toserver)
 	char* n = NULL;
 	/***** Insert YOUR code *******/
  	/* Check for \seg command and create segfault */
-	if(starts_with(line, "\\seg"))
+	if(starts_with(line, CMD_SEG))
 	{
 		*n = 1;
 		
@@ -32,14 +32,15 @@ int sh_handle_input(char *line, int fd_toserver)
 	/* Write message to server for processing */
 	else
 	{
-		write(fd_toserver, line, strlen(line));
+		write(fd_toserver, line, MSG_SIZE);
 	}
 	return 0;
 }
 
 /*
  * Check if the line is empty (no data; just spaces or return)
- */
+   THIS WAS MOVED TO util.c TO BE USED IN server.c
+ 
 int is_empty(char *line)
 {
 	while (*line != '\0') {
@@ -49,6 +50,7 @@ int is_empty(char *line)
 	}
 	return 1;
 }
+ */
 
 /*
  * Start the main shell loop:
@@ -62,7 +64,7 @@ void sh_start(char *name, int fd_toserver)
 	while(1)
 	{
 		printf("%s >> ", name);
-		fgets(msg, MSG_SIZE, stdin);
+		strcpy(msg, sh_read_line());
 		if(!is_empty(msg))
 		{	
 			sh_handle_input(msg, fd_toserver);
@@ -101,7 +103,9 @@ int main(int argc, char **argv)
 		while(1)
 		{
 			if(read(ends[0], msg, MSG_SIZE) > 0)
-				printf("%s", msg);
+			{
+				printf("%s\n", msg);
+			}
 			usleep(1000);
 		}
 	}
@@ -111,8 +115,8 @@ int main(int argc, char **argv)
 	 */
 	 else
 	 {
-		sprintf(msg, "%d", pid);
-		//write(ends[1], msg, MSG_SIZE); THIS NEEDS TO BE DONE WITH THE CHILD_PID COMMAND
+		sprintf(msg, "%s %d\n", CMD_CHILD_PID, pid);
+		write(ends[1], msg, MSG_SIZE);
 		sh_start(name, ends[1]);
 	 }
 	 return EXIT_SUCCESS;

@@ -20,3 +20,16 @@ int starts_with(const char *a, const char *b)
 	else
 		return 0;
 }
+
+/*
+ * Check if the line is empty (no data; just spaces or return)
+ */
+int is_empty(char *line)
+{
+	while (*line != '\0') {
+		if (!isspace(*line))
+			return 0;
+		line++;
+	}
+	return 1;
+}

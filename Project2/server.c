@@ -43,6 +43,19 @@ int list_users(user_chat_box_t *users, int fd)
 	 */
 	 
 	 /***** Insert YOUR code *******/
+	char list[MSG_SIZE];
+	int i;
+	
+	sprintf(list, "\n");
+	for (i = 0; i < MAX_USERS; i++)
+	{
+		if (users[i].status == SLOT_FULL)
+		{
+			strcat(list, users[i].name);
+			strcat(list, "\n");
+		}
+	}
+	write(fd, list, MSG_SIZE);
 }
 
 /*
@@ -91,6 +104,7 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 	write(server_fd, info, MSG_SIZE);
 	
 	strcpy(users[slot].name, buf);
+	users[slot].child_pid = -1;
 	users[slot].pid = fork();
 	if (users[slot].pid == -1)
 	{
@@ -228,6 +242,27 @@ void send_p2p_msg(int idx, user_chat_box_t *users, char *buf)
 	/* get the target user by name (hint: call (extract_name() and send message */
 	
 	/***** Insert YOUR code *******/
+	char name[MSG_SIZE], msg[MSG_SIZE];
+	int target;
+
+	if (strlen(buf) <= strlen(CMD_P2P)+1 || is_empty(buf + strlen(CMD_P2P)))
+	{
+		write(users[idx].ptoc[1], "User not found", MSG_SIZE);
+		return;
+	}
+
+	strcpy(name, extract_name(P2P, buf));
+	target = find_user_index(users, name);
+	if (target == -1)
+	{
+		write(users[idx].ptoc[1], "User not found", MSG_SIZE);
+		return;
+	}
+	strcpy(buf, buf+strlen(name)+strlen(CMD_P2P)+2);
+	sprintf(msg, "%s : %s", users[idx].name, buf);
+	strtok(msg, "\n");
+	write(users[target].ptoc[1], msg, MSG_SIZE);
+	return;
 }
 
 int main(int argc, char **argv)
@@ -274,7 +309,7 @@ int main(int argc, char **argv)
 	/* Inside the parent. This will be the most important part of this program. */
 	char msg[MSG_SIZE];
 	int cmd, num_users, err;
-	num_users = 0;
+	server.child_pid = -1;
 	user_chat_box_t user_list[MAX_USERS];
 	int i;
 	for (i = 0; i < MAX_USERS; i++)
@@ -311,13 +346,19 @@ int main(int argc, char **argv)
 			switch(cmd)
 			{
 				case CHILD_PID :
-					break;
-				
-				case LIST_USERS :
-					break;
+					if (server.child_pid == -1)
+					{
+						strcpy(msg, extract_name(CHILD_PID, msg));
+						server.child_pid = atoi(msg);
+						break;
+					} // We don't have a break here so \add_child adds users too
 				
 			/* Fork a process if a user was added (ADD_USER) */
 				case ADD_USER :
+					if (strlen(msg) <= strlen(CMD_ADD_USER)+1 || is_empty(msg + strlen(CMD_ADD_USER)))
+					{
+						write(server.ptoc[1], "ERROR: NULL name passed", MSG_SIZE);
+					}
 					strcpy(msg, extract_name(ADD_USER, msg));
 					err = add_user(user_list, msg, server.ptoc[1]);
 					if (err == 99)
@@ -328,9 +369,20 @@ int main(int argc, char **argv)
 					{
 						return EXIT_FAILURE;
 					}
-					break;		
+					break;
+					
+				case LIST_USERS :
+					list_users(user_list, server.ptoc[1]);
+					break;
 
-				case KICK :			
+				case KICK :
+					if (strlen(msg) <= strlen(CMD_KICK)+1 || is_empty(msg + strlen(CMD_KICK)))
+					{
+						write(server.ptoc[1], "ERROR: NULL name passed", MSG_SIZE);
+						break;
+					}
+					strcpy(msg, extract_name(KICK, msg));
+					
 					break; 
 				
 				case EXIT :
@@ -341,9 +393,10 @@ int main(int argc, char **argv)
 					break;
 				
 				default :
-				;
+					;
 				
 			}
+		}
 			/* Back to our main while loop for the "parent" */
 			/* 
 			 * Now read messages from the user shells (ie. LOOP) if any, then:
@@ -362,7 +415,47 @@ int main(int argc, char **argv)
 			 * 		from recitations?)
 			 * 		Cleanup user if the window is indeed closed.
 			 */
-
+			
+		for (i = 0; i < MAX_USERS; i++)
+		{
+			if (user_list[i].status == SLOT_FULL && read(user_list[i].ctop[0], msg, MSG_SIZE) > 0)
+			{
+			
+				cmd = parse_command(msg);
+			
+				switch(cmd)
+				{
+					case CHILD_PID :
+						if (user_list[i].child_pid == -1)
+						{
+							strcpy(msg, extract_name(CHILD_PID, msg));
+							user_list[i].child_pid = atoi(msg);
+						}
+						break;
+					
+					case LIST_USERS :
+						break;
+						
+					case P2P :
+						if (strlen(msg) <= strlen(CMD_P2P)+1 || is_empty(msg + strlen(CMD_P2P)))
+						{
+							write(server.ptoc[1], "ERROR: NULL name passed", MSG_SIZE);
+						}
+						send_p2p_msg(i, user_list, msg);
+						break;
+					
+					case EXIT :
+						break;
+					
+					case BROADCAST :
+						broadcast_msg(user_list, msg, server.ptoc[1], user_list[i].name);
+						break;
+					
+					default :
+						;
+					
+				}
+			}
 		}	/* while loop ends when server shell sees the \exit command */
 	}
 

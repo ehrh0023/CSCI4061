@@ -71,5 +71,6 @@ typedef struct user_chat_box_s {
 
 void print_prompt(char *name);
 int starts_with(const char *a, const char *b);
+int is_empty(char *line);
 
 #endif
