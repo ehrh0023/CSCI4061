@@ -32,7 +32,7 @@ int sh_handle_input(char *line, int fd_toserver)
 	/* Write message to server for processing */
 	else
 	{
-		write(fd_toserver, line, MSG_SIZE);
+		write(fd_toserver, line, strlen(line));
 	}
 	return 0;
 }
@@ -57,11 +57,12 @@ int is_empty(char *line)
 void sh_start(char *name, int fd_toserver)
 {
 	char msg[MSG_SIZE];
+	int i;
 	/***** Insert YOUR code *******/
 	while(1)
 	{
 		printf("%s >> ", name);
-		scanf("%s", msg);
+		fgets(msg, MSG_SIZE, stdin);
 		if(!is_empty(msg))
 		{	
 			sh_handle_input(msg, fd_toserver);
@@ -111,7 +112,7 @@ int main(int argc, char **argv)
 	 else
 	 {
 		sprintf(msg, "%d", pid);
-		write(ends[1], msg, MSG_SIZE);
+		//write(ends[1], msg, MSG_SIZE); THIS NEEDS TO BE DONE WITH THE CHILD_PID COMMAND
 		sh_start(name, ends[1]);
 	 }
 	 return EXIT_SUCCESS;

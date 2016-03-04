@@ -61,20 +61,23 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 	 * before adding it. This will help in future name-based search.
 	 */
 	int slot, err, flags;
-	char *fd1, *fd2;
+	char fd1[2], fd2[2];
+	char info[MSG_SIZE];
 	for (slot = 0; slot < MAX_USERS; slot++)
 	{
-		if (users[slot].status == SLOT_EMPTY)
+		if (users[slot].status == SLOT_EMPTY) {
 			users[slot].status = SLOT_FULL;
 			break;
+		}
 	}
 	if (slot == MAX_USERS)
-		return 1;
+		return 99;
 	 
 	if (pipe(users[slot].ptoc) == -1 || pipe(users[slot].ctop) == -1)
 	{
 		return EXIT_FAILURE;
 	}
+	
 	flags = fcntl(users[slot].ptoc[0], F_GETFL, 0);
 	fcntl(users[slot].ptoc[0], F_SETFL, flags | O_NONBLOCK);
 	flags = fcntl(users[slot].ptoc[1], F_GETFL, 0);
@@ -84,6 +87,9 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 	flags = fcntl(users[slot].ctop[1], F_GETFL, 0);
 	fcntl(users[slot].ctop[1], F_SETFL, flags | O_NONBLOCK);
 	
+	sprintf(info, "Adding user %s...", buf);
+	write(server_fd, info, MSG_SIZE);
+	
 	strcpy(users[slot].name, buf);
 	users[slot].pid = fork();
 	if (users[slot].pid == -1)
@@ -92,21 +98,18 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 	}
 	else if (users[slot].pid == 0)
 	{
-		fd1 = (char *) malloc(sizeof(char *)*2);
-		fd2 = (char *) malloc(sizeof(char *)*2);
-		err = execl(XTERM_PATH, XTERM, "+hold", "-e", "./shell", fd1, fd2, users[slot].name);
+		close(users[slot].ptoc[1]);
+		close(users[slot].ctop[0]);
+		sprintf(fd1, "%d", users[slot].ptoc[0]);
+		sprintf(fd2, "%d", users[slot].ctop[1]);
+		
+		err = execl(XTERM_PATH, XTERM, "+hold", "-e", "./shell", fd1, fd2, users[slot].name, (char *) NULL);
 		if (err = -1)
 		{
+			perror("error");
 			return EXIT_FAILURE;
 		}
-	}
-	/* Read the child_pid of the shell. MIGHT NEED BLOCKING */
-	else
-	{
-		char *str_pid;
-		str_pid = (char *) malloc(sizeof(char *)*2);
-		read(users[slot].ctop[0], str_pid, 2);
-		users[slot].child_pid = atoi(str_pid);
+		exit(0);
 	}
 	return EXIT_SUCCESS;
 }
@@ -234,19 +237,14 @@ int main(int argc, char **argv)
 	
 	/* open non-blocking bi-directional pipes for communication with server shell */
 	server_ctrl_t server;
-	int flags;
 	if (pipe(server.ptoc) == -1 || pipe(server.ctop) == -1)
 	{
 		return EXIT_FAILURE;
 	}
-	flags = fcntl(server.ptoc[0], F_GETFL, 0);
-	fcntl(server.ptoc[0], F_SETFL, flags | O_NONBLOCK);
-	flags = fcntl(server.ptoc[1], F_GETFL, 0);
-	fcntl(server.ptoc[1], F_SETFL, flags | O_NONBLOCK);
-	flags = fcntl(server.ctop[0], F_GETFL, 0);
-	fcntl(server.ctop[0], F_SETFL, flags | O_NONBLOCK);
-	flags = fcntl(server.ctop[1], F_GETFL, 0);
-	fcntl(server.ctop[1], F_SETFL, flags | O_NONBLOCK);
+	fcntl(server.ptoc[0], F_SETFL, F_GETFL | O_NONBLOCK);
+	fcntl(server.ptoc[1], F_SETFL, F_GETFL | O_NONBLOCK);
+	fcntl(server.ctop[0], F_SETFL, F_GETFL | O_NONBLOCK);
+	fcntl(server.ctop[1], F_SETFL, F_GETFL | O_NONBLOCK);
 
 	/* Fork the server shell */
 	server.pid = fork();
@@ -263,23 +261,15 @@ int main(int argc, char **argv)
 	 	 */
 		close(server.ptoc[1]);
 		close(server.ctop[0]);
-		char *fd1, *fd2;
-		fd1 = (char *) malloc(sizeof(char *)*2);
-		fd2 = (char *) malloc(sizeof(char *)*2);
+		char fd1[2], fd2[2];
+		int err;
 		sprintf(fd1, "%d", server.ptoc[0]);
 		sprintf(fd2, "%d", server.ctop[1]);
-		if (execlp("./shell", "./shell", fd1, fd2, "SERVER") == -1)
+		err = execlp("./shell", "./shell", fd1, fd2, "SERVER", (char *) NULL);
+		if (err == -1)
 		{
 			_exit(EXIT_FAILURE);
 		}
-	}
-	/* Read the child_pid of the shell. MIGHT NEED BLOCKING */
-	else
-	{
-		char *str_pid;
-		str_pid = (char *) malloc(sizeof(char *)*2);
-		read(server.ctop[0], str_pid, MSG_SIZE);
-		server.child_pid = atoi(str_pid);
 	}
 	/* Inside the parent. This will be the most important part of this program. */
 	char msg[MSG_SIZE];
@@ -317,52 +307,69 @@ int main(int argc, char **argv)
 		if(read(server.ctop[0], msg, MSG_SIZE) > 0)
 		{
 			cmd = parse_command(msg);
-		}
 		
-		switch(cmd)
-		{
-		/* Fork a process if a user was added (ADD_USER) */
-			case ADD_USER :
-			
-			strcpy(msg, extract_name(ADD_USER, msg));
-			err = add_user(user_list, msg, server.ptoc[1]);
-			if (err == 1)
+			switch(cmd)
 			{
-				write(server.ptoc[1], "ERROR: Users at maximum", MSG_SIZE);
-			}
-			else if (err == EXIT_FAILURE)
-			{
-				_exit(EXIT_FAILURE);
-			}
-			
-			/* Inside the child */
-			/*
-			 * Start an xterm with shell program running inside it.
-			 * execl(XTERM_PATH, XTERM, "+hold", "-e", <path for the SHELL program>, ..<rest of the arguments for the shell program>..);
-			 */
-			 
-			break;			 
-		}
-		/* Back to our main while loop for the "parent" */
-		/* 
-		 * Now read messages from the user shells (ie. LOOP) if any, then:
-		 * 		1. Parse the command
-		 * 		2. Begin switch statement to identify command and take appropriate action
-		 *
-		 * 		List of commands to handle here:
-		 * 			CHILD_PID
-		 * 			LIST_USERS
-		 * 			P2P
-		 * 			EXIT
-		 * 			BROADCAST
-		 *
-		 * 		3. You may use the failure of pipe read command to check if the 
-		 * 		user chat windows has been closed. (Remember waitpid with WNOHANG 
-		 * 		from recitations?)
-		 * 		Cleanup user if the window is indeed closed.
-		 */
+				case CHILD_PID :
+					break;
+				
+				case LIST_USERS :
+					break;
+				
+			/* Fork a process if a user was added (ADD_USER) */
+				case ADD_USER :
+					strcpy(msg, extract_name(ADD_USER, msg));
+					if (msg == NULL) // NEED TO CHECK FOR VALID NAME
+					{
+						write(server.ptoc[1], "ERROR: invalid name", MSG_SIZE);
+						break;
+					}
+					err = add_user(user_list, msg, server.ptoc[1]);
+					if (err == 99)
+					{
+						write(server.ptoc[1], "ERROR: users at maximum", MSG_SIZE);
+					}
+					else if (err == EXIT_FAILURE)
+					{
+						return EXIT_FAILURE;
+					}
+					break;		
 
-	}	/* while loop ends when server shell sees the \exit command */
+				case KICK :			
+					break; 
+				
+				case EXIT :
+					break;
+				
+				case BROADCAST :
+					broadcast_msg(user_list, msg, server.ptoc[1], "SERVER");
+					break;
+				
+				default :
+				;
+				
+			}
+			/* Back to our main while loop for the "parent" */
+			/* 
+			 * Now read messages from the user shells (ie. LOOP) if any, then:
+			 * 		1. Parse the command
+			 * 		2. Begin switch statement to identify command and take appropriate action
+			 *
+			 * 		List of commands to handle here:
+			 * 			CHILD_PID
+			 * 			LIST_USERS
+			 * 			P2P
+			 * 			EXIT
+			 * 			BROADCAST
+			 *
+			 * 		3. You may use the failure of pipe read command to check if the 
+			 * 		user chat windows has been closed. (Remember waitpid with WNOHANG 
+			 * 		from recitations?)
+			 * 		Cleanup user if the window is indeed closed.
+			 */
+
+		}	/* while loop ends when server shell sees the \exit command */
+	}
 
 	return 0;
 }
