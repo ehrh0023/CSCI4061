@@ -2,6 +2,7 @@
 #define UTIL_H
 
 #include <unistd.h>
+#include <signal.h>
 
 #define FILENAME __FILE__
 #define FUNCNAME __func__

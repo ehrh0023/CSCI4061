@@ -38,21 +38,6 @@ int sh_handle_input(char *line, int fd_toserver)
 }
 
 /*
- * Check if the line is empty (no data; just spaces or return)
-   THIS WAS MOVED TO util.c TO BE USED IN server.c
- 
-int is_empty(char *line)
-{
-	while (*line != '\0') {
-		if (!isspace(*line))
-			return 0;
-		line++;
-	}
-	return 1;
-}
- */
-
-/*
  * Start the main shell loop:
  * Print prompt, read user input, handle it.
  */

@@ -120,7 +120,7 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 		err = execl(XTERM_PATH, XTERM, "+hold", "-e", "./shell", fd1, fd2, users[slot].name, (char *) NULL);
 		if (err = -1)
 		{
-			perror("error");
+			perror("creating xterm failed");
 			return EXIT_FAILURE;
 		}
 		exit(0);
@@ -168,6 +168,14 @@ void close_pipes(int idx, user_chat_box_t *users)
 void cleanup_user(int idx, user_chat_box_t *users)
 {
 	/***** Insert YOUR code *******/
+    close(users[idx].ptoc[0]);
+    close(users[idx].ptoc[1]);
+    close(users[idx].ptoc[0]);
+    close(users[idx].ctop[1]);
+    kill(users[idx].child_pid, 9);
+    kill(users[idx].pid, 9);
+    wait(); //only wait for the child; cannot wait for grandchild
+    users[idx].status = SLOT_EMPTY;
 }
 
 /*
@@ -177,7 +185,8 @@ void cleanup_users(user_chat_box_t *users)
 {
 	int i;
 
-	for (i = 0; i < MAX_USERS; i++) {
+	for (i = 0; i < MAX_USERS; i++)
+    {
 		if (users[i].status == SLOT_EMPTY)
 			continue;
 		cleanup_user(i, users);
@@ -192,6 +201,13 @@ void cleanup_users(user_chat_box_t *users)
 void cleanup_server(server_ctrl_t server_ctrl)
 {
 	/***** Insert YOUR code *******/
+    close(server_ctrl.ptoc[0]);
+    close(server_ctrl.ptoc[1]);
+    close(server_ctrl.ctop[0]);
+    close(server_ctrl.ptoc[1]);
+    kill(server_ctrl.child_pid, 9);
+    kill(server_ctrl.pid, 9);
+    wait();
 }
 
 /*
@@ -308,7 +324,7 @@ int main(int argc, char **argv)
 	}
 	/* Inside the parent. This will be the most important part of this program. */
 	char msg[MSG_SIZE];
-	int cmd, num_users, err;
+	int cmd, num_users, err, target, status;
 	server.child_pid = -1;
 	user_chat_box_t user_list[MAX_USERS];
 	int i;
@@ -357,13 +373,14 @@ int main(int argc, char **argv)
 				case ADD_USER :
 					if (strlen(msg) <= strlen(CMD_ADD_USER)+1 || is_empty(msg + strlen(CMD_ADD_USER)))
 					{
-						write(server.ptoc[1], "ERROR: NULL name passed", MSG_SIZE);
+						perror("NULL name passed");
+						break;
 					}
 					strcpy(msg, extract_name(ADD_USER, msg));
 					err = add_user(user_list, msg, server.ptoc[1]);
 					if (err == 99)
 					{
-						write(server.ptoc[1], "ERROR: users at maximum", MSG_SIZE);
+						perror("users at maximum");
 					}
 					else if (err == EXIT_FAILURE)
 					{
@@ -378,15 +395,23 @@ int main(int argc, char **argv)
 				case KICK :
 					if (strlen(msg) <= strlen(CMD_KICK)+1 || is_empty(msg + strlen(CMD_KICK)))
 					{
-						write(server.ptoc[1], "ERROR: NULL name passed", MSG_SIZE);
+						perror("NULL name passed");
 						break;
 					}
 					strcpy(msg, extract_name(KICK, msg));
-					
+                    target = find_user_index(user_list, msg);
+                    if (target == -1)
+                    {
+                        perror("user not found");
+                        break;
+                    }
+					cleanup_user(target, user_list);
 					break; 
 				
 				case EXIT :
-					break;
+                    cleanup_users(user_list);
+                    cleanup_server(server);
+                    return 0;
 				
 				case BROADCAST :
 					broadcast_msg(user_list, msg, server.ptoc[1], "SERVER");
@@ -420,7 +445,6 @@ int main(int argc, char **argv)
 		{
 			if (user_list[i].status == SLOT_FULL && read(user_list[i].ctop[0], msg, MSG_SIZE) > 0)
 			{
-			
 				cmd = parse_command(msg);
 			
 				switch(cmd)
@@ -434,17 +458,20 @@ int main(int argc, char **argv)
 						break;
 					
 					case LIST_USERS :
+                        list_users(user_list, user_list[i].ptoc[1]);
 						break;
 						
 					case P2P :
 						if (strlen(msg) <= strlen(CMD_P2P)+1 || is_empty(msg + strlen(CMD_P2P)))
 						{
-							write(server.ptoc[1], "ERROR: NULL name passed", MSG_SIZE);
+							perror("NULL name passed");
+							break;
 						}
 						send_p2p_msg(i, user_list, msg);
 						break;
 					
 					case EXIT :
+                        cleanup_user(i, user_list);
 						break;
 					
 					case BROADCAST :
@@ -456,6 +483,19 @@ int main(int argc, char **argv)
 					
 				}
 			}
+            else if (user_list[i].status == SLOT_FULL)
+            {
+                waitpid(user_list[i].pid, &status, WNOHANG);
+                if (WIFEXITED(status))
+                {
+                    close(user_list[i].ptoc[0]);
+                    close(user_list[i].ptoc[1]);
+                    close(user_list[i].ctop[0]);
+                    close(user_list[i].ctop[1]);
+                    kill(user_list[i].child_pid, 9);
+                    user_list[i].status = SLOT_EMPTY;
+                }
+            }
 		}	/* while loop ends when server shell sees the \exit command */
 	}
 
