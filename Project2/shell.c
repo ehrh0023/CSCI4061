@@ -39,7 +39,7 @@ int sh_handle_input(char *line, int fd_toserver)
 	/* Write message to server for processing */
 	else
 	{
-		write(fd_toserver, line, MSG_SIZE);
+		if (write(fd_toserver, line, MSG_SIZE) < 0) perror("<write to server failed>");
 	}
 	return 0;
 }
@@ -84,6 +84,7 @@ int main(int argc, char **argv)
 	pid = fork();
 	if(pid == -1)
 	{
+		perror("<shell fork failed>");
 		return EXIT_FAILURE;
 	}
 	/*
@@ -108,7 +109,7 @@ int main(int argc, char **argv)
 	 else
 	 {
 		sprintf(msg, "%s %d\n", CMD_CHILD_PID, pid);
-		write(ends[1], msg, MSG_SIZE);
+		if (write(ends[1], msg, MSG_SIZE) < 0) perror("<write child_pid to server failed>");
 		sh_start(name, ends[1]);
 	 }
 	 return EXIT_SUCCESS;
