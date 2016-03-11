@@ -8,7 +8,7 @@
  
 The purpose of our server program is to simulate a multi-user chat server on a single machine. Initially executing the server program will give the user a prompt where, using certain commands, he/she can add users, kick users, send them messages, and more. Adding a user creates an xterm window where the that particular user can type messages or use commands similar to the ones in the server window. The program is meant to run each part in an isolated environment, preventing errors from crashing all other parts of the program and giving it a useful modularity.
 
-To compile the program, navigate to the Project2 directory and simply type "make" into the terminal.
+To compile the program, navigate to the proj2_group_G directory and simply type "make" into the terminal.
 
 To use the program from the shell, type "./server" with no arguments.
 
