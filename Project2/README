@@ -1,7 +1,7 @@
 /* CSci4061 S2016 Assignment 2
  * section: 7
- * section:
  * section: 
+ * section: 5
  * date: 03/11/16
  * name: Caleb Biasco, Meghan Jonas, Dennis Ehrhardt
  * id: biasc007, jonas050, ehrh0023  */
@@ -31,3 +31,4 @@ Assumptions:
 	-\seg is not used on the server shell.
 	
 To handle the errors required by the lab manual, we mainly checked the return values of our system/library calls and added the appropriate response to each. When it came to passing a username as an argument, we checked the string length and whitespace to make sure no unintentional segmentation faults happened. To guard against pipe errors, all unused pipes are closed immediately upon forking and all pipes are closed immediately upon a shell process being killed.
+All read, write, and close system calls are checked for negative values (except ones where negative values are expected) and have appropriate error messages to notify the user what happened and where it happened.

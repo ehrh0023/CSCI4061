@@ -64,11 +64,11 @@ int list_users(user_chat_box_t *users, int fd)
 	}
 	if (none)
 	{
-		write(fd, "<no users>", MSG_SIZE);
+		if (write(fd, "<no users>", MSG_SIZE) < 0) perror("<write to shell failed>");
 	}
 	else
 	{
-		write(fd, list, MSG_SIZE);
+		if (write(fd, list, MSG_SIZE) < 0) perror("<write to shell failed>");
 	}
 }
 
@@ -97,6 +97,7 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 	/* Pipe failure */
 	if (pipe(users[slot].ptoc) == -1 || pipe(users[slot].ctop) == -1)
 	{
+		perror("<user pipe allocation failed>");
 		return EXIT_FAILURE;
 	}
 	
@@ -107,7 +108,7 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 	fcntl(users[slot].ctop[1], F_SETFL, F_GETFL | O_NONBLOCK);
 	
 	sprintf(info, "Adding user %s...", buf);
-	write(server_fd, info, MSG_SIZE);
+	if (write(server_fd, info, MSG_SIZE) < 0) perror("<write to server shell failed>");
 	
 	strcpy(users[slot].name, buf);
 	users[slot].child_pid = -1;
@@ -122,15 +123,15 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 	/* Child: close appropriate pipes, then exec xterm */
 	else if (users[slot].pid == 0)
 	{
-		close(users[slot].ptoc[1]);
-		close(users[slot].ctop[0]);
+		if (close(users[slot].ptoc[1]) < 0) perror("<ptoc[1] close failed>");
+		if (close(users[slot].ctop[0]) < 0) perror("<ctop[0] close failed>");
 		sprintf(fd1, "%d", users[slot].ptoc[0]);
 		sprintf(fd2, "%d", users[slot].ctop[1]);
 		
 		err = execl(XTERM_PATH, XTERM, "+hold", "-e", "./shell", fd1, fd2, users[slot].name, (char *) NULL);
-		if (err = -1)
+		if (err == -1)
 		{
-			perror("creating xterm failed");
+			perror("<creating xterm failed>");
 			return EXIT_FAILURE;
 		}
 		exit(0);
@@ -149,7 +150,7 @@ int broadcast_msg(user_chat_box_t *users, char *buf, int fd, char *sender)
 
 	/* Notify on server shell */
 	if (write(fd, msg, strlen(msg) + 1) < 0)
-		perror("writing to server shell");
+		perror("<write to server shell failed>");
 	
 	/* Send the message to all user shells */
 	s = strtok(buf, "\n");
@@ -158,7 +159,7 @@ int broadcast_msg(user_chat_box_t *users, char *buf, int fd, char *sender)
 		if (users[i].status == SLOT_EMPTY)
 			continue;
 		if (write(users[i].ptoc[1], text, strlen(text) + 1) < 0)
-			perror("write to child shell failed");
+			perror("<write to child shell failed>");
 	}
 }
 
@@ -167,8 +168,8 @@ int broadcast_msg(user_chat_box_t *users, char *buf, int fd, char *sender)
  */
 void close_pipes(int idx, user_chat_box_t *users)
 {
-	close(users[idx].ptoc[0]);
-	close(users[idx].ctop[1]);
+	if (close(users[idx].ptoc[0]) < 0) perror("<user ptoc[0] close failed>");
+	if (close(users[idx].ctop[1]) < 0) perror("<user ctop[1] close failed>");
 }
 
 /*
@@ -178,11 +179,11 @@ void close_pipes(int idx, user_chat_box_t *users)
  */
 void cleanup_user(int idx, user_chat_box_t *users)
 {
-    close_pipes(idx, users);
-    kill(users[idx].child_pid, 9);
-    kill(users[idx].pid, 9);
-    wait(); // Only wait for the child; cannot wait for grandchild
-    users[idx].status = SLOT_EMPTY;
+	close_pipes(idx, users);
+	if (kill(users[idx].child_pid, 9) < 0) perror("<kill user shell child failed>");
+	if (kill(users[idx].pid, 9) < 0) perror("<kill user shell failed>");
+	wait(); // Only wait for the child; cannot wait for grandchild
+	users[idx].status = SLOT_EMPTY;
 }
 
 /*
@@ -207,11 +208,11 @@ void cleanup_users(user_chat_box_t *users)
  */
 void cleanup_server(server_ctrl_t server_ctrl)
 {
-    close(server_ctrl.ptoc[1]);
-    close(server_ctrl.ctop[0]);
-    kill(server_ctrl.child_pid, 9);
-    kill(server_ctrl.pid, 9);
-    wait(); // Only wait for the child; cannot wait for grandchild
+	if (close(server_ctrl.ptoc[1]) < 0) perror("<close server ptoc[1] failed>");
+	if (close(server_ctrl.ctop[0]) < 0) perror("<close server ctop[0] failed>");
+	if (kill(server_ctrl.child_pid, 9) < 0) perror("<kill server shell child failed>");
+	if (kill(server_ctrl.pid, 9) < 0) perror("<kill server shell failed>");
+	wait(); // Only wait for the child; cannot wait for grandchild
 }
 
 /*
@@ -264,7 +265,8 @@ void send_p2p_msg(int idx, user_chat_box_t *users, char *buf)
 
 	if (strlen(buf) <= strlen(CMD_P2P)+1 || is_empty(buf + strlen(CMD_P2P)))
 	{
-		write(users[idx].ptoc[1], "User not found", MSG_SIZE);
+		if (write(users[idx].ptoc[1], "User not found", MSG_SIZE) < 0)
+			perror("<write to user shell failed>");
 		return;
 	}
 
@@ -272,13 +274,14 @@ void send_p2p_msg(int idx, user_chat_box_t *users, char *buf)
 	target = find_user_index(users, name);
 	if (target == -1)
 	{
-		write(users[idx].ptoc[1], "User not found", MSG_SIZE);
+		if (write(users[idx].ptoc[1], "User not found", MSG_SIZE) < 0)
+			perror("<write to user shell failed>");
 		return;
 	}
 	strcpy(buf, buf+strlen(name)+strlen(CMD_P2P)+2);
 	sprintf(msg, "%s : %s", users[idx].name, buf);
 	strtok(msg, "\n");
-	write(users[target].ptoc[1], msg, MSG_SIZE);
+	if (write(users[target].ptoc[1], msg, MSG_SIZE) < 0) perror("<write to user shell failed>");
 	return;
 }
 
@@ -289,6 +292,7 @@ int main(int argc, char **argv)
 	server_ctrl_t server;
 	if (pipe(server.ptoc) == -1 || pipe(server.ctop) == -1)
 	{
+		perror("<server pipe allocation failed>");
 		return EXIT_FAILURE;
 	}
 	fcntl(server.ptoc[0], F_SETFL, F_GETFL | O_NONBLOCK);
@@ -300,6 +304,7 @@ int main(int argc, char **argv)
 	server.pid = fork();
 	if (server.pid == -1)
 	{
+		perror("<server shell fork failed>");
 		return EXIT_FAILURE;
 	}
 	else if (server.pid == 0)
@@ -309,8 +314,8 @@ int main(int argc, char **argv)
 		 * Start server's shell.
 	 	 * exec the SHELL program with the required program arguments.
 	 	 */
-		close(server.ptoc[1]);
-		close(server.ctop[0]);
+		if (close(server.ptoc[1]) < 0) perror("<close server shell ptoc[1] failed>");
+		if (close(server.ctop[0]) < 0) perror("<close server shell ctop[0] failed>");
 		char fd1[2], fd2[2];
 		int err;
 		sprintf(fd1, "%d", server.ptoc[0]);
@@ -318,7 +323,8 @@ int main(int argc, char **argv)
 		err = execlp("./shell", "./shell", fd1, fd2, "SERVER", (char *) NULL);
 		if (err == -1)
 		{
-			_exit(EXIT_FAILURE);
+			perror("<exec server shell failed>");
+			return EXIT_FAILURE;
 		}
 	}
 	/* Inside the parent. This will be the most important part of this program. */
@@ -331,8 +337,8 @@ int main(int argc, char **argv)
 	{
 		user_list[i].status = SLOT_EMPTY;
 	}
-	close(server.ptoc[0]);
-	close(server.ctop[1]);
+	if (close(server.ptoc[0]) < 0) perror("<close server ptoc[0] failed>");
+	if (close(server.ctop[1]) < 0) perror("<close server ctop[1] failed>");
 
 	/* Start a loop which runs every 1000 usecs.
 	 * The loop should read messages from the server shell, parse them using the 
@@ -342,7 +348,7 @@ int main(int argc, char **argv)
 		usleep(1000);
 
 		/* Read from the server shell */
-		if(read(server.ctop[0], msg, MSG_SIZE) > 0)
+		if (read(server.ctop[0], msg, MSG_SIZE) > 0)
 		{
 			cmd = parse_command(msg);
 		
@@ -372,6 +378,7 @@ int main(int argc, char **argv)
 					}
 					else if (err == EXIT_FAILURE)
 					{
+						perror("<exec user shell failed>");
 						return EXIT_FAILURE;
 					}
 					break;
@@ -389,20 +396,20 @@ int main(int argc, char **argv)
 						break;
 					}
 					strcpy(msg, extract_name(KICK, msg));
-                    target = find_user_index(user_list, msg);
-                    if (target == -1)
-                    {
-                        perror("<user not found>");
-                        break;
-                    }
+					target = find_user_index(user_list, msg);
+					if (target == -1)
+					{
+						perror("<user not found>");
+						break;
+					}
 					cleanup_user(target, user_list);
 					break; 
 				
 				/* Cleans up all child processes and exits server (\exit) */
 				case EXIT :
-                    cleanup_users(user_list);
-                    cleanup_server(server);
-                    return 0;
+					cleanup_users(user_list);
+					cleanup_server(server);
+					return 0;
 				
 				/* Any text that doesn't start with a command */
 				case BROADCAST :
@@ -416,8 +423,14 @@ int main(int argc, char **argv)
 		/* Read from each user shell */
 		for (i = 0; i < MAX_USERS; i++)
 		{
-			/* If the user exists and has written to its pipe */
-			if (user_list[i].status == SLOT_FULL && read(user_list[i].ctop[0], msg, MSG_SIZE) > 0)
+			/* If the user does not exist, skip him */
+			if (user_list[i].status == SLOT_EMPTY)
+			{
+				continue;
+			}
+			
+			/* If the user does exist and has written to the pipe */
+			if (read(user_list[i].ctop[0], msg, MSG_SIZE) > 0)
 			{
 				cmd = parse_command(msg);
 			
@@ -434,7 +447,7 @@ int main(int argc, char **argv)
 					
 					/* List all current users. Print "<no users>" if there are no users (\list) */
 					case LIST_USERS :
-                        list_users(user_list, user_list[i].ptoc[1]);
+						list_users(user_list, user_list[i].ptoc[1]);
 						break;
 						
 					/* Send a private message to the specified user (\p2p) */
@@ -442,14 +455,13 @@ int main(int argc, char **argv)
 						if (strlen(msg) <= strlen(CMD_P2P)+1 || is_empty(msg + strlen(CMD_P2P)))
 						{
 							perror("<NULL name passed>");
-							break;
 						}
 						send_p2p_msg(i, user_list, msg);
 						break;
 					
 					/* Cleans up shell process and exits xterm (\exit) */
 					case EXIT :
-                        cleanup_user(i, user_list);
+						cleanup_user(i, user_list);
 						break;
 					
 					/* Any text that doesn't start with a command */
@@ -460,16 +472,14 @@ int main(int argc, char **argv)
 					default :;
 				}
 			}
+
 			/* Check if the user has left unexpectedly */
-            else if (user_list[i].status == SLOT_FULL)
-            {
-                if (waitpid(user_list[i].pid, NULL, WNOHANG) == -1)
-                {
-                    close_pipes(i, user_list);
-                    kill(user_list[i].child_pid, 9);
-                    user_list[i].status = SLOT_EMPTY;
-                }
-            }
+		        if (user_list[i].status == SLOT_FULL && waitpid(user_list[i].pid, NULL, WNOHANG) == -1)
+		        {
+				close_pipes(i, user_list);
+				kill(user_list[i].child_pid, 9);
+				user_list[i].status = SLOT_EMPTY;
+		        }
 		}	/* while loop ends when server shell sees the \exit command */
 	}
 
