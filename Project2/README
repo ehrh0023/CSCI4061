@@ -1,0 +1,33 @@
+/* CSci4061 S2016 Assignment 2
+ * section: 7
+ * section:
+ * section: 
+ * date: 03/11/16
+ * name: Caleb Biasco, Meghan Jonas, Dennis Ehrhardt
+ * id: biasc007, jonas050, ehrh0023  */
+ 
+The purpose of our server program is to simulate a multi-user chat server on a single machine. Initially executing the server program will give the user a prompt where, using certain commands, he/she can add users, kick users, send them messages, and more. Adding a user creates an xterm window where the that particular user can type messages or use commands similar to the ones in the server window. The program is meant to run each part in an isolated environment, preventing errors from crashing all other parts of the program and giving it a useful modularity.
+
+To compile the program, navigate to the Project2 directory and simply type "make" into the terminal.
+
+To use the program from the shell, type "./server" with no arguments.
+
+The program will give the user a server prompt where they can use one of the following commands:
+	-	\add <username>: Adds a user to the chat server and creates an xterm window for them.
+	-	\list: Lists all users currently in the server.
+	-	\kick <username>: Kicks the user with the given username.
+	-	\exit: Closes the server and all user xterm windows.
+	-	<any-other-text>: Broadcasts a message to all users.
+If a user is added, their xterm window will show a similar username prompt to the server and allow the following commands:
+	-	\list: Lists all users currently in the server.
+	-	\p2p <username> <message>: Sends a private message to the given user with the given username.
+	-	\exit: Closes the xterm window and removes the user from the server.
+	-	\seg: Segmentation faults the user (our personal favorite!)
+	-	<any-other-text>: Broadcasts a message to all users.
+	
+Assumptions:
+	-No users with similar names (this will cause inability to kick particular user with similar name).
+	-All commands are typed exactly as listed above, and not with any non-whitespace characters appended to them. The commands are recognized with extra characters, but it breaks some error-handling we use.
+	-\seg is not used on the server shell.
+	
+To handle the errors required by the lab manual, we mainly checked the return values of our system/library calls and added the appropriate response to each. When it came to passing a username as an argument, we checked the string length and whitespace to make sure no unintentional segmentation faults happened. To guard against pipe errors, all unused pipes are closed immediately upon forking and all pipes are closed immediately upon a shell process being killed.
