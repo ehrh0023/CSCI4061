@@ -1,3 +1,11 @@
+/* CSci4061 S2016 Assignment 2
+ * section: 7
+ * section:
+ * section: 
+ * date: 03/11/16
+ * name: Caleb Biasco, Meghan Jonas, Dennis Ehrhardt
+ * id: biasc007, jonas050, ehrh0023  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -6,6 +14,8 @@
 #include <errno.h>
 #include <sys/types.h>
 #include "util.h"
+
+#define ALL_SLOTS_FULL 99
 
 /*
  * Identify the command used at the shell 
@@ -37,14 +47,10 @@ int parse_command(char *buf)
  */
 int list_users(user_chat_box_t *users, int fd)
 {
-	/* 
-	 * Construct a list of user names
-	 * Don't forget to send the list to the requester!
-	 */
-	 
-	 /***** Insert YOUR code *******/
 	char list[MSG_SIZE];
 	int i;
+	int none;
+	none = 1;
 	
 	sprintf(list, "\n");
 	for (i = 0; i < MAX_USERS; i++)
@@ -53,29 +59,29 @@ int list_users(user_chat_box_t *users, int fd)
 		{
 			strcat(list, users[i].name);
 			strcat(list, "\n");
+			none = 0;
 		}
 	}
-	write(fd, list, MSG_SIZE);
+	if (none)
+	{
+		write(fd, "<no users>", MSG_SIZE);
+	}
+	else
+	{
+		write(fd, list, MSG_SIZE);
+	}
 }
 
 /*
- * Add a new user
+ * If number of users is not at max, set up pipes and add a new user
  */
 int add_user(user_chat_box_t *users, char *buf, int server_fd)
 {
-	/***** Insert YOUR code *******/
-	/* 
-	 * Check if user limit reached.
-	 *
-	 * If limit is okay, add user, set up non-blocking pipes and
-	 * notify on server shell
-	 *
-	 * NOTE: You may want to remove any newline characters from the name string 
-	 * before adding it. This will help in future name-based search.
-	 */
 	int slot, err, flags;
 	char fd1[2], fd2[2];
 	char info[MSG_SIZE];
+	
+	/* Place user in slot */
 	for (slot = 0; slot < MAX_USERS; slot++)
 	{
 		if (users[slot].status == SLOT_EMPTY) {
@@ -84,21 +90,21 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 		}
 	}
 	if (slot == MAX_USERS)
-		return 99;
-	 
+	{
+		return ALL_SLOTS_FULL;
+	}
+	
+	/* Pipe failure */
 	if (pipe(users[slot].ptoc) == -1 || pipe(users[slot].ctop) == -1)
 	{
 		return EXIT_FAILURE;
 	}
 	
-	flags = fcntl(users[slot].ptoc[0], F_GETFL, 0);
-	fcntl(users[slot].ptoc[0], F_SETFL, flags | O_NONBLOCK);
-	flags = fcntl(users[slot].ptoc[1], F_GETFL, 0);
-	fcntl(users[slot].ptoc[1], F_SETFL, flags | O_NONBLOCK);
-	flags = fcntl(users[slot].ctop[0], F_GETFL, 0);
-	fcntl(users[slot].ctop[0], F_SETFL, flags | O_NONBLOCK);
-	flags = fcntl(users[slot].ctop[1], F_GETFL, 0);
-	fcntl(users[slot].ctop[1], F_SETFL, flags | O_NONBLOCK);
+	/* Set the pipes to non-blocking */
+	fcntl(users[slot].ptoc[0], F_SETFL, F_GETFL | O_NONBLOCK);
+	fcntl(users[slot].ptoc[1], F_SETFL, F_GETFL | O_NONBLOCK);
+	fcntl(users[slot].ctop[0], F_SETFL, F_GETFL | O_NONBLOCK);
+	fcntl(users[slot].ctop[1], F_SETFL, F_GETFL | O_NONBLOCK);
 	
 	sprintf(info, "Adding user %s...", buf);
 	write(server_fd, info, MSG_SIZE);
@@ -106,10 +112,14 @@ int add_user(user_chat_box_t *users, char *buf, int server_fd)
 	strcpy(users[slot].name, buf);
 	users[slot].child_pid = -1;
 	users[slot].pid = fork();
+	
+	/* If forking failed, exit */
 	if (users[slot].pid == -1)
 	{
 		return EXIT_FAILURE;
 	}
+	
+	/* Child: close appropriate pipes, then exec xterm */
 	else if (users[slot].pid == 0)
 	{
 		close(users[slot].ptoc[1]);
@@ -157,7 +167,8 @@ int broadcast_msg(user_chat_box_t *users, char *buf, int fd, char *sender)
  */
 void close_pipes(int idx, user_chat_box_t *users)
 {
-	/***** Insert YOUR code *******/
+	close(users[idx].ptoc[0]);
+	close(users[idx].ctop[1]);
 }
 
 /*
@@ -167,14 +178,10 @@ void close_pipes(int idx, user_chat_box_t *users)
  */
 void cleanup_user(int idx, user_chat_box_t *users)
 {
-	/***** Insert YOUR code *******/
-    close(users[idx].ptoc[0]);
-    close(users[idx].ptoc[1]);
-    close(users[idx].ptoc[0]);
-    close(users[idx].ctop[1]);
+    close_pipes(idx, users);
     kill(users[idx].child_pid, 9);
     kill(users[idx].pid, 9);
-    wait(); //only wait for the child; cannot wait for grandchild
+    wait(); // Only wait for the child; cannot wait for grandchild
     users[idx].status = SLOT_EMPTY;
 }
 
@@ -200,14 +207,11 @@ void cleanup_users(user_chat_box_t *users)
  */
 void cleanup_server(server_ctrl_t server_ctrl)
 {
-	/***** Insert YOUR code *******/
-    close(server_ctrl.ptoc[0]);
     close(server_ctrl.ptoc[1]);
     close(server_ctrl.ctop[0]);
-    close(server_ctrl.ptoc[1]);
     kill(server_ctrl.child_pid, 9);
     kill(server_ctrl.pid, 9);
-    wait();
+    wait(); // Only wait for the child; cannot wait for grandchild
 }
 
 /*
@@ -255,9 +259,6 @@ char *extract_name(int cmd, char *buf)
  */
 void send_p2p_msg(int idx, user_chat_box_t *users, char *buf)
 {
-	/* get the target user by name (hint: call (extract_name() and send message */
-	
-	/***** Insert YOUR code *******/
 	char name[MSG_SIZE], msg[MSG_SIZE];
 	int target;
 
@@ -284,9 +285,7 @@ void send_p2p_msg(int idx, user_chat_box_t *users, char *buf)
 int main(int argc, char **argv)
 {
 	
-	/***** Insert YOUR code *******/
-	
-	/* open non-blocking bi-directional pipes for communication with server shell */
+	/* Open non-blocking bi-directional pipes for communication with server shell */
 	server_ctrl_t server;
 	if (pipe(server.ptoc) == -1 || pipe(server.ctop) == -1)
 	{
@@ -324,7 +323,7 @@ int main(int argc, char **argv)
 	}
 	/* Inside the parent. This will be the most important part of this program. */
 	char msg[MSG_SIZE];
-	int cmd, num_users, err, target, status;
+	int cmd, num_users, err, target;
 	server.child_pid = -1;
 	user_chat_box_t user_list[MAX_USERS];
 	int i;
@@ -342,45 +341,34 @@ int main(int argc, char **argv)
 		/* Let the CPU breathe */
 		usleep(1000);
 
-		/* 
-		 * 1. Read the message from server's shell, if any
-		 * 2. Parse the command
-		 * 3. Begin switch statement to identify command and take appropriate action
-		 *
-		 * 		List of commands to handle here:
-		 * 			CHILD_PID
-		 * 			LIST_USERS
-		 * 			ADD_USER
-		 * 			KICK
-		 * 			EXIT
-		 * 			BROADCAST 
-		 */
+		/* Read from the server shell */
 		if(read(server.ctop[0], msg, MSG_SIZE) > 0)
 		{
 			cmd = parse_command(msg);
 		
 			switch(cmd)
 			{
+				/* Add the child_pid attribute to server_ctrl_t if empty (\child_pid) */
 				case CHILD_PID :
 					if (server.child_pid == -1)
 					{
 						strcpy(msg, extract_name(CHILD_PID, msg));
 						server.child_pid = atoi(msg);
-						break;
-					} // We don't have a break here so \add_child adds users too
+					}
+					break;
 				
-			/* Fork a process if a user was added (ADD_USER) */
+				/* Fork a process if a user was added (\add) */
 				case ADD_USER :
 					if (strlen(msg) <= strlen(CMD_ADD_USER)+1 || is_empty(msg + strlen(CMD_ADD_USER)))
 					{
-						perror("NULL name passed");
+						perror("<NULL name passed>");
 						break;
 					}
 					strcpy(msg, extract_name(ADD_USER, msg));
 					err = add_user(user_list, msg, server.ptoc[1]);
-					if (err == 99)
+					if (err == ALL_SLOTS_FULL)
 					{
-						perror("users at maximum");
+						perror("<users at maximum>");
 					}
 					else if (err == EXIT_FAILURE)
 					{
@@ -388,67 +376,54 @@ int main(int argc, char **argv)
 					}
 					break;
 					
+				/* List all current users. Print "<no users>" if there are no users (\list) */
 				case LIST_USERS :
 					list_users(user_list, server.ptoc[1]);
 					break;
 
+				/* Kicks specified user (\kick) */
 				case KICK :
 					if (strlen(msg) <= strlen(CMD_KICK)+1 || is_empty(msg + strlen(CMD_KICK)))
 					{
-						perror("NULL name passed");
+						perror("<NULL name passed>");
 						break;
 					}
 					strcpy(msg, extract_name(KICK, msg));
                     target = find_user_index(user_list, msg);
                     if (target == -1)
                     {
-                        perror("user not found");
+                        perror("<user not found>");
                         break;
                     }
 					cleanup_user(target, user_list);
 					break; 
 				
+				/* Cleans up all child processes and exits server (\exit) */
 				case EXIT :
                     cleanup_users(user_list);
                     cleanup_server(server);
                     return 0;
 				
+				/* Any text that doesn't start with a command */
 				case BROADCAST :
 					broadcast_msg(user_list, msg, server.ptoc[1], "SERVER");
 					break;
 				
-				default :
-					;
-				
+				default :;
 			}
 		}
-			/* Back to our main while loop for the "parent" */
-			/* 
-			 * Now read messages from the user shells (ie. LOOP) if any, then:
-			 * 		1. Parse the command
-			 * 		2. Begin switch statement to identify command and take appropriate action
-			 *
-			 * 		List of commands to handle here:
-			 * 			CHILD_PID
-			 * 			LIST_USERS
-			 * 			P2P
-			 * 			EXIT
-			 * 			BROADCAST
-			 *
-			 * 		3. You may use the failure of pipe read command to check if the 
-			 * 		user chat windows has been closed. (Remember waitpid with WNOHANG 
-			 * 		from recitations?)
-			 * 		Cleanup user if the window is indeed closed.
-			 */
 			
+		/* Read from each user shell */
 		for (i = 0; i < MAX_USERS; i++)
 		{
+			/* If the user exists and has written to its pipe */
 			if (user_list[i].status == SLOT_FULL && read(user_list[i].ctop[0], msg, MSG_SIZE) > 0)
 			{
 				cmd = parse_command(msg);
 			
 				switch(cmd)
 				{
+					/* Add the child_pid attribute to user_chat_box_t if empty (\child_pid) */
 					case CHILD_PID :
 						if (user_list[i].child_pid == -1)
 						{
@@ -457,41 +432,40 @@ int main(int argc, char **argv)
 						}
 						break;
 					
+					/* List all current users. Print "<no users>" if there are no users (\list) */
 					case LIST_USERS :
                         list_users(user_list, user_list[i].ptoc[1]);
 						break;
 						
+					/* Send a private message to the specified user (\p2p) */
 					case P2P :
 						if (strlen(msg) <= strlen(CMD_P2P)+1 || is_empty(msg + strlen(CMD_P2P)))
 						{
-							perror("NULL name passed");
+							perror("<NULL name passed>");
 							break;
 						}
 						send_p2p_msg(i, user_list, msg);
 						break;
 					
+					/* Cleans up shell process and exits xterm (\exit) */
 					case EXIT :
                         cleanup_user(i, user_list);
 						break;
 					
+					/* Any text that doesn't start with a command */
 					case BROADCAST :
 						broadcast_msg(user_list, msg, server.ptoc[1], user_list[i].name);
 						break;
 					
-					default :
-						;
-					
+					default :;
 				}
 			}
+			/* Check if the user has left unexpectedly */
             else if (user_list[i].status == SLOT_FULL)
             {
-                waitpid(user_list[i].pid, &status, WNOHANG);
-                if (WIFEXITED(status))
+                if (waitpid(user_list[i].pid, NULL, WNOHANG) == -1)
                 {
-                    close(user_list[i].ptoc[0]);
-                    close(user_list[i].ptoc[1]);
-                    close(user_list[i].ctop[0]);
-                    close(user_list[i].ctop[1]);
+                    close_pipes(i, user_list);
                     kill(user_list[i].child_pid, 9);
                     user_list[i].status = SLOT_EMPTY;
                 }

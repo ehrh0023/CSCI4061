@@ -1,3 +1,11 @@
+/* CSci4061 S2016 Assignment 2
+ * section: 7
+ * section:
+ * section: 
+ * date: 03/11/16
+ * name: Caleb Biasco, Meghan Jonas, Dennis Ehrhardt
+ * id: biasc007, jonas050, ehrh0023  */
+
 #include <stdio.h>
 #include <string.h>
 #include "util.h"

@@ -1,3 +1,11 @@
+/* CSci4061 S2016 Assignment 2
+ * section: 7
+ * section:
+ * section: 
+ * date: 03/11/16
+ * name: Caleb Biasco, Meghan Jonas, Dennis Ehrhardt
+ * id: biasc007, jonas050, ehrh0023  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,12 +30,11 @@ char *sh_read_line(void)
 int sh_handle_input(char *line, int fd_toserver)
 {
 	char* n = NULL;
-	/***** Insert YOUR code *******/
  	/* Check for \seg command and create segfault */
 	if(starts_with(line, CMD_SEG))
 	{
+		printf("Generating segfault...");
 		*n = 1;
-		
 	}
 	/* Write message to server for processing */
 	else
