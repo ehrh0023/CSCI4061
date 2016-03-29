@@ -60,11 +60,27 @@ int init(char *process_name, key_t key, int wsize, int delay, int to, int drop) 
     printf("[%s] pid: %d, key: %d\n", myinfo.process_name, myinfo.pid, myinfo.key);
     printf("window_size: %d, max delay: %d, timeout: %d, drop rate: %d%%\n", WINDOW_SIZE, MAX_DELAY, TIMEOUT, DROP_RATE);
 
-    // TODO setup a message queue and save the id to the mailbox_id
+    // setup a message queue and save the id to the mailbox_id
+	mailbox_id = msgget(myinfo.key, IPC_CREAT | IPC_EXCL | 402);
+	if (errno == EEXIST) {
+		printf("Key already exists: %s\n", myinfo.key);
+		return -1;
+	}
+	else if (mailbox_id == -1) {
+		printf("Message queue creation failed\n");
+		return -1;
+	}
 
-    // TODO set the signal handler for receiving packets
-
-    return -1;
+    //set the signal handler for receiving packets
+	struct sigaction actIO;
+	actIO.sa_handler = receive_packet;
+	sigaction(SIGIO, &actIO, NULL);
+	
+	struct sigaction actALRM;
+	actALRM.sa_handler = timeout_handler;
+	sigaction(SIGALRM, &actALRM, NULL);
+	
+    return 0;
 }
 
 /**
