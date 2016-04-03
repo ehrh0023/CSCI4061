@@ -1,24 +1,47 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <errno.h>
 
 #include "process.h"
 
-int main(int argc, char** argv) {
-    if (argc < 7) {
-        printf("args: process_name, key, window_size, max_delay, timeout, rate\n");
-        return -1;
+int key;
+char *process_name;
+
+void cleanup(int sig) {
+    // remove the mailbox
+    int mid = msgget(key, 0666);
+    if (msgctl(mid, IPC_RMID, NULL) == -1) {
+        perror("Failed removing message queue: ");
+    }
+    // remove the file
+    if (remove(process_name) != 0 ) {
+        perror("Failed deleting file: ");
     }
 
+    printf("Exiting..\n");
+    exit(0);
+}
+
+int main(int argc, char** argv) {
+    printf("CTRL+C to exit.\n");
+    if (argc < 7) {
+        perror("args: process_name, key, window_size, max_delay, timeout, rate\n");
+        return -1;
+    }
+    process_name = argv[1];
+    key = atoi(argv[2]);
+
     // initialize basic information and write it to a file
-    if (init(argv[1], atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]), atoi(argv[6])) < 0) {
-        printf("Failed in init.\n");
+    if (init(process_name, key, atoi(argv[3]), atoi(argv[4]), atoi(argv[5]), atoi(argv[6])) < 0) {
         return -1;
     }
 
     char role[MAX_NAME_LEN];
     char receiver[MAX_NAME_LEN];
     char data[MAX_SIZE];
+    signal(SIGINT, cleanup);
 
     while(1) {
         printf("\nRole (sender/receiver): ");
