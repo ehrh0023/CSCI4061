@@ -123,7 +123,7 @@ int get_process_info(char *process_name, process_t *info) {
 }
 
 /**
- * DONE: Send a packet to a mailbox identified by the mailbox_id, and send a SIGIO to the pid.
+ * DONE Send a packet to a mailbox identified by the mailbox_id, and send a SIGIO to the pid.
  * Return 0 if success, -1 otherwise.
  */
 int send_packet(packet_t *packet, int mailbox_id, int pid) {
@@ -216,7 +216,7 @@ int drop_packet() {
 }
 
 /**
- * TODO Send a message (broken down into multiple packets) to another process.
+ * DONE Send a message (broken down into multiple packets) to another process.
  * We first need to get the receiver's information and construct the status of
  * each of the packet.
  * Return 0 if success, -1 otherwise.
@@ -265,7 +265,7 @@ int send_message(char *receiver, char* content) {
         return -1;
     }
 
-    // TODO send packets to the receiver
+    // DONE send packets to the receiver
     // the number of packets sent at a time depends on the WINDOW_SIZE.
     // you need to change the message_id of each packet (initialized to -1)
     // with the message_id included in the ACK packet sent by the receiver
@@ -285,10 +285,16 @@ int send_message(char *receiver, char* content) {
 }
 
 /**
- * TODO Handle TIMEOUT. Resend previously sent packets whose ACKs have not been
+ * DONE Handle TIMEOUT. Resend previously sent packets whose ACKs have not been
  * received yet. Reset the TIMEOUT.
  */
 void timeout_handler(int sig) {
+	num_timeouts++;
+	if (num_timeouts == MAX_TIMEOUT) {
+		message_stats.is_sending = 0;
+		//NEED TO RETURN TO TOPLEVEL HERE
+		return;
+	}
 	int i;
 	int message_length = message_stats.num_packets;
 	for (i = 0; i < message_length; i++) {
@@ -301,7 +307,7 @@ void timeout_handler(int sig) {
 }
 
 /**
- * TODO Send an ACK to the sender's mailbox.
+ * DONE Send an ACK to the sender's mailbox.
  * The message id is determined by the receiver and has to be included in the ACK packet.
  * Return 0 if success, -1 otherwise.
  */
@@ -334,7 +340,7 @@ void set_message_id(int m_id) {
 }
 
 /**
- * TODO Handle ACK packet. Update the status of the packet to indicate that the packet
+ * DONE: Handle ACK packet. Update the status of the packet to indicate that the packet
  * has been successfully received and reset the TIMEOUT.
  * You should handle unexpected cases such as duplicate ACKs, ACK for completed message, etc.
  */
@@ -355,6 +361,7 @@ void handle_ACK(packet_t *packet) {
 	// if all packets have been received
 	if (message_stats.num_packets_received == message_stats.num_packets) {
 		message_stats.is_sending = 0;
+		//NEED TO RETURN TO TOPLEVEL HERE
 		return;
 	}
 	
@@ -406,5 +413,5 @@ void receive_packet(int sig) {
  * Save the message content to the data and return 0 if success, -1 otherwise
  */
 int receive_message(char *data) {
-    return -1;
+    
 }
