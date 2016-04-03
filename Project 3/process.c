@@ -25,10 +25,12 @@ message_status_t message_stats;
 message_t *message;
 
 int num_available_packets; // number of packets that can be sent (0 <= n <= WINDOW_SIZE)
-int is_receiving = 0; // a helper varibale may be used to handle multiple senders
+int is_receiving = 0; // a helper variable may be used to handle multiple senders
+
+int num_timeouts = 0; // counter variable for sender timeouts
 
 /**
- * TODO complete the definition of the function
+ * DONE
  * 1. Save the process information to a file and a process structure for future use.
  * 2. Setup a message queue with a given key.
  * 3. Setup the signal handlers (SIGIO for handling packet, SIGALRM for timeout).
@@ -61,7 +63,7 @@ int init(char *process_name, key_t key, int wsize, int delay, int to, int drop) 
     printf("window_size: %d, max delay: %d, timeout: %d, drop rate: %d%%\n", WINDOW_SIZE, MAX_DELAY, TIMEOUT, DROP_RATE);
 
     // setup a message queue and save the id to the mailbox_id
-	mailbox_id = msgget(myinfo.key, IPC_CREAT | IPC_EXCL | 402);
+	mailbox_id = msgget(myinfo.key, IPC_CREAT | IPC_EXCL | 0666);
 	if (errno == EEXIST) {
 		printf("Key already exists: %s\n", myinfo.key);
 		return -1;
@@ -71,13 +73,19 @@ int init(char *process_name, key_t key, int wsize, int delay, int to, int drop) 
 		return -1;
 	}
 
-    //set the signal handler for receiving packets
+    //set the signal handlers for receiving packets
+	sigset_t set;
+	sigaddset(&set, SIGIO);
+	sigaddset(&set, SIGALRM);
+	
 	struct sigaction actIO;
 	actIO.sa_handler = receive_packet;
+	actIO.sa_mask = set;
 	sigaction(SIGIO, &actIO, NULL);
 	
 	struct sigaction actALRM;
 	actALRM.sa_handler = timeout_handler;
+	actALRM.sa_mask = set;
 	sigaction(SIGALRM, &actALRM, NULL);
 	
     return 0;
@@ -115,11 +123,16 @@ int get_process_info(char *process_name, process_t *info) {
 }
 
 /**
- * TODO Send a packet to a mailbox identified by the mailbox_id, and send a SIGIO to the pid.
+ * DONE: Send a packet to a mailbox identified by the mailbox_id, and send a SIGIO to the pid.
  * Return 0 if success, -1 otherwise.
  */
 int send_packet(packet_t *packet, int mailbox_id, int pid) {
-    return -1;
+	if (msgsnd(mailbox_id, packet, sizeof(packet_t), IPC_NOWAIT) < 0) {
+		perror("msgsnd failed");
+		return -1;
+	}
+	kill(pid, SIGIO);
+    return 0;
 }
 
 /**
@@ -257,8 +270,18 @@ int send_message(char *receiver, char* content) {
     // you need to change the message_id of each packet (initialized to -1)
     // with the message_id included in the ACK packet sent by the receiver
 
-
-    return -1;
+	int first_packet;
+	if ((first_packet = get_next_packet(num_packets)) == -1) {
+		printf("No packets to initially send.\n");
+		return -1;
+	}
+	if (send_packet(&(message_stats.packet_status[first_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid) < 0) {
+		exit(-1);
+	}
+	message_stats.packet_status[first_packet].is_sent = 1;
+	alarm(TIMEOUT);
+	pause();
+    return 0;
 }
 
 /**
@@ -266,7 +289,15 @@ int send_message(char *receiver, char* content) {
  * received yet. Reset the TIMEOUT.
  */
 void timeout_handler(int sig) {
-
+	int i;
+	int message_length = message_stats.num_packets;
+	for (i = 0; i < message_length; i++) {
+		if (message_stats.packet_status[i].is_sent && !message_stats.packet_status[i].ACK_received) {
+			if (send_packet(&(message_stats.packet_status[i].packet), message_stats.mailbox_id, message_stats.receiver_info.pid) < 0) {
+				exit(-1);
+			}
+		}
+	}
 }
 
 /**
@@ -294,13 +325,47 @@ void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
 
 }
 
+void set_message_id(int m_id) {
+	int i;
+	int message_length = message_stats.num_packets;
+	for (i = 0; i < message_length; i++) {
+		message_stats.packet_status[i].packet.message_id = m_id;
+	}
+}
+
 /**
  * TODO Handle ACK packet. Update the status of the packet to indicate that the packet
  * has been successfully received and reset the TIMEOUT.
  * You should handle unexpected cases such as duplicate ACKs, ACK for completed message, etc.
  */
 void handle_ACK(packet_t *packet) {
-
+	// if a message_id is not yet set
+	if (message_stats.packet_status[0].packet.message_id == -1) {
+		set_message_id(packet->message_id);
+	}
+	
+	// if the packet is a duplicate or from another message
+	if (packet->message_id != message_stats.packet_status[0].packet.message_id ||
+		message_stats.packet_status[packet->packet_num].ACK_received) {
+		return;
+	}
+	
+	alarm(0);
+	message_stats.num_packets_received++;
+	// if all packets have been received
+	if (message_stats.num_packets_received == message_stats.num_packets) {
+		message_stats.is_sending = 0;
+		return;
+	}
+	
+	int next_packet;
+	// if no more packets to send
+	if ((next_packet = get_next_packet(message_stats.num_packets)) == -1) {
+		return;
+	}
+	message_stats.packet_status[next_packet].is_sent = 1;
+	send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid);
+	alarm(TIMEOUT);
 }
 
 /**
@@ -314,16 +379,26 @@ int get_packet_from_mailbox(int mailbox_id) {
 }
 
 /**
- * TODO Receive a packet.
+ * DONE: Receive a packet. (don't forget to test drop_packet)
  * If the packet is DATA, send an ACK packet and SIGIO to the sender.
  * If the packet is ACK, update the status of the packet.
  */
 void receive_packet(int sig) {
-
-    // TODO you have to call drop_packet function to drop a packet with some probability
-    // if (drop_packet()) {
-    //     ...
-    // }
+	if (drop_packet()) {
+		packet_t *packet;
+		if (msgrcv(mailbox_id, packet, sizeof(packet_t), 0, 0) < 0) {
+			perror("msgrcv failed");
+			return;
+		}
+		if (packet->mtype == DATA) {
+			process_t *process;
+			get_process_info(packet->process_name, process);
+			handle_data(packet, process, process->key);
+		}
+		else {
+			handle_ACK(packet);
+		}
+	}
 }
 
 /**
