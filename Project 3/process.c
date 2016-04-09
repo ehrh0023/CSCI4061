@@ -312,14 +312,29 @@ void timeout_handler(int sig) {
  * Return 0 if success, -1 otherwise.
  */
 int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
-    // TODO construct an ACK packet
+    // DONE construct an ACK packet
+
+    if(mailbox_id == NULL || pid == NULL || packet_num == NULL){
+        printf("send_ACK criteria missing");
+        return -1;
+    }
+
+    packet_t ackp;
+    ackp.mtype = ACK;
+    ackp.pid = pid;
+    ackp.packet_num = packet_num;
 
     int delay = rand() % MAX_DELAY;
     sleep(delay);
 
-    // TODO send an ACK for the packet it received
+    // DONE send an ACK for the packet it received
 
-    return -1;
+    if (msgsnd(mailbox_id, ackp, sizeof(packet_t), IPC_NOWAIT) < 0) {
+        perror("ACK send failed");
+        return -1;
+    }
+    kill(pid, SIGIO);
+    return 0;
 }
 
 /**
@@ -328,7 +343,29 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
  * packet from a different sender, etc.
  */
 void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
+    if(message->sender == NULL)
+        message->sender = sender;
+    // if the packet is from a different sender
+    if(message->sender.process_name != sender->process_name)
+        return;
+    
+    // TODO if the packet is from a different message
+    
 
+    // if message is not a duplicate
+    if(message->is_received[packet->packet_num] < 0){
+        message->is_received[packet->packet_num] = 0;
+        message->data[packet->packet_num] = packet->data;
+        message->num_packets_received++;
+        if(message->num_packets_received == packet->num_packets){
+            message->is_complete;
+        }
+    }
+
+    send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
+    
+    
+    
 }
 
 void set_message_id(int m_id) {
@@ -409,9 +446,27 @@ void receive_packet(int sig) {
 }
 
 /**
- * TODO Initialize the message structure and wait for a message from another process.
+ * DONE Initialize the message structure and wait for a message from another process.
  * Save the message content to the data and return 0 if success, -1 otherwise
  */
 int receive_message(char *data) {
+    
+    message->sender = NULL;
+    message->num_packets_received = 0;
+    message->is_complete = -1;
+    message->is_received[WINDOW_SIZE];
+    for(int i=0; i < WINDOW_SIZE; i++){
+        message->is_received[i]=-1;
+    }
+    message->data[WINDOW_SIZE * PACKET_SIZE];
+    
+    while(message->is_complete < 0){
+        if(pause()<0){
+            printf("sigrcv failed");
+            return -1;
+        }
+    }
+    
+    return 0;
     
 }
