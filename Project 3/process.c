@@ -75,6 +75,7 @@ int init(char *process_name, key_t key, int wsize, int delay, int to, int drop) 
 
     //set the signal handlers for receiving packets
 	sigset_t set;
+	sigemptyset(&set);
 	sigaddset(&set, SIGIO);
 	sigaddset(&set, SIGALRM);
 	
@@ -127,7 +128,7 @@ int get_process_info(char *process_name, process_t *info) {
  * Return 0 if success, -1 otherwise.
  */
 int send_packet(packet_t *packet, int mailbox_id, int pid) {
-	if (msgsnd(mailbox_id, packet, sizeof(packet_t), IPC_NOWAIT) < 0) {
+	if (msgsnd(mailbox_id, packet, sizeof(packet_t), 0) < 0) {
 		perror("msgsnd failed");
 		return -1;
 	}
@@ -276,11 +277,16 @@ int send_message(char *receiver, char* content) {
 		return -1;
 	}
 	if (send_packet(&(message_stats.packet_status[first_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid) < 0) {
-		exit(-1);
+		return -1;
 	}
+	printf("Send a packet [%d] to pid:%d\n", first_packet, message_stats.receiver_info.pid);
 	message_stats.packet_status[first_packet].is_sent = 1;
-	alarm(TIMEOUT);
-	pause();
+	
+	while (message_stats.is_sending) {
+		alarm(TIMEOUT);
+        pause();
+    }
+	
     return 0;
 }
 
@@ -291,17 +297,20 @@ int send_message(char *receiver, char* content) {
 void timeout_handler(int sig) {
 	num_timeouts++;
 	if (num_timeouts == MAX_TIMEOUT) {
+		num_timeouts = 0;
 		message_stats.is_sending = 0;
-		//NEED TO RETURN TO TOPLEVEL HERE
 		return;
 	}
 	int i;
 	int message_length = message_stats.num_packets;
+	printf("TIMEOUT!\n");
 	for (i = 0; i < message_length; i++) {
 		if (message_stats.packet_status[i].is_sent && !message_stats.packet_status[i].ACK_received) {
 			if (send_packet(&(message_stats.packet_status[i].packet), message_stats.mailbox_id, message_stats.receiver_info.pid) < 0) {
-				exit(-1);
+				printf("send_packet error\n");
+				return;
 			}
+			printf("Send a packet [%d] to pid:%d\n", i, message_stats.receiver_info.pid);
 		}
 	}
 }
@@ -314,7 +323,7 @@ void timeout_handler(int sig) {
 int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
     // DONE construct an ACK packet
 
-    if(mailbox_id == NULL || pid == NULL || packet_num == NULL){
+    if(mailbox_id == -1 || pid == -1 || packet_num == -1){
         printf("send_ACK criteria missing");
         return -1;
     }
@@ -329,7 +338,7 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
 
     // DONE send an ACK for the packet it received
 
-    if (msgsnd(mailbox_id, ackp, sizeof(packet_t), IPC_NOWAIT) < 0) {
+    if (msgsnd(mailbox_id, (void *) &ackp, sizeof(packet_t), IPC_NOWAIT) < 0) {
         perror("ACK send failed");
         return -1;
     }
@@ -343,29 +352,36 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
  * packet from a different sender, etc.
  */
 void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
-    if(message->sender == NULL)
-        message->sender = sender;
+    if(message->sender.pid == -1)
+        message->sender = *sender;
     // if the packet is from a different sender
     if(message->sender.process_name != sender->process_name)
         return;
     
-    // TODO if the packet is from a different message
-    
+    // DONE? if the packet is from a different message
+	if ((message->num_packets_received > 0 && packet->message_id == -1) || \
+		(message_id != packet->message_id && packet->message_id > -1)) {
+		return;
+	}
+	
+	if (!message->data) {
+		message->data = (char *) malloc(packet->num_packets*PACKET_SIZE);
+	}
 
     // if message is not a duplicate
-    if(message->is_received[packet->packet_num] < 0){
-        message->is_received[packet->packet_num] = 0;
-        message->data[packet->packet_num] = packet->data;
+    if(message->is_received[packet->packet_num] == 0){
+        message->is_received[packet->packet_num] = 1;
+        message->data[packet->packet_num*PACKET_SIZE] = packet->data;
         message->num_packets_received++;
         if(message->num_packets_received == packet->num_packets){
-            message->is_complete;
+            message->is_complete = 1;
+			message_id++;
         }
     }
 
     send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
-    
-    
-    
+	if (!message->is_complete)
+		pause();
 }
 
 void set_message_id(int m_id) {
@@ -394,11 +410,12 @@ void handle_ACK(packet_t *packet) {
 	}
 	
 	alarm(0);
+	num_timeouts = 0;
+	printf("Receive an ACK for packet [%d]\n", packet->packet_num);
 	message_stats.num_packets_received++;
 	// if all packets have been received
 	if (message_stats.num_packets_received == message_stats.num_packets) {
 		message_stats.is_sending = 0;
-		//NEED TO RETURN TO TOPLEVEL HERE
 		return;
 	}
 	
@@ -409,7 +426,7 @@ void handle_ACK(packet_t *packet) {
 	}
 	message_stats.packet_status[next_packet].is_sent = 1;
 	send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid);
-	alarm(TIMEOUT);
+	printf("Send a packet [%d] to pid:%d\n", next_packet, message_stats.receiver_info.pid);
 }
 
 /**
@@ -428,14 +445,15 @@ int get_packet_from_mailbox(int mailbox_id) {
  * If the packet is ACK, update the status of the packet.
  */
 void receive_packet(int sig) {
-	if (drop_packet()) {
-		packet_t *packet;
-		if (msgrcv(mailbox_id, packet, sizeof(packet_t), 0, 0) < 0) {
-			perror("msgrcv failed");
+	if (1) {
+		printf("HIHIHI\n");
+		packet_t *packet = (packet_t *) malloc(sizeof(packet_t));
+		if (msgrcv(mailbox_id, packet, sizeof(packet_t), get_packet_from_mailbox(mailbox_id), 0) < 0) {
+			printf("msgrcv failed\n");
 			return;
 		}
 		if (packet->mtype == DATA) {
-			process_t *process;
+			process_t *process = (process_t *) malloc(sizeof(process_t));
 			get_process_info(packet->process_name, process);
 			handle_data(packet, process, process->key);
 		}
@@ -451,21 +469,16 @@ void receive_packet(int sig) {
  */
 int receive_message(char *data) {
     
-    message->sender = NULL;
+	message = (message_t*) malloc(sizeof(message_t));
+    message->sender.pid = -1;
     message->num_packets_received = 0;
-    message->is_complete = -1;
-    message->is_received[WINDOW_SIZE];
-    for(int i=0; i < WINDOW_SIZE; i++){
-        message->is_received[i]=-1;
-    }
-    message->data[WINDOW_SIZE * PACKET_SIZE];
+    message->is_complete = 0;
     
-    while(message->is_complete < 0){
-        if(pause()<0){
-            printf("sigrcv failed");
-            return -1;
-        }
+    while(!message->is_complete){
+		pause();
     }
+	
+	strcpy(data, message->data);
     
     return 0;
     
