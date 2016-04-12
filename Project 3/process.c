@@ -362,15 +362,24 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
  * packet from a different sender, etc.
  */
 void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
-    if(message->sender.pid == -1)
+	// if from an old message
+	if (message_id > packet->message_id && packet->message_id > -1) {
+		send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
+		return;
+	}
+	// if not receiving
+	if (message == NULL) {
+		return;
+	}
+	
+    if (message->sender.pid == -1)
         message->sender = *sender;
     // if the packet is from a different sender
-    if(strcmp(message->sender.process_name, sender->process_name) != 0)
+    if (strcmp(message->sender.process_name, sender->process_name) != 0)
         return;
     
-    // DONE? if the packet is from a different message
-	if ((message->num_packets_received > 0 && packet->message_id == -1) || \
-		(message_id != packet->message_id && packet->message_id > -1)) {
+    // DONE if the packet is from a different message
+	if (message->num_packets_received > 0 && packet->message_id == -1) {
 		return;
 	}
 	
