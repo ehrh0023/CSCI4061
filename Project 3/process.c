@@ -269,7 +269,7 @@ int send_message(char *receiver, char* content) {
         printf("Failed paritioning data into packets.\n");
         message_stats.is_sending = 0;
         free(message_stats.packet_status);
-        message_stats.packet_status = NULL:
+        message_stats.packet_status = NULL;
         return -1;
     }
 
