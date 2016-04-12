@@ -82,11 +82,13 @@ int init(char *process_name, key_t key, int wsize, int delay, int to, int drop) 
 	struct sigaction actIO;
 	actIO.sa_handler = receive_packet;
 	actIO.sa_mask = set;
+	actIO.sa_flags = 0;
 	sigaction(SIGIO, &actIO, NULL);
 	
 	struct sigaction actALRM;
 	actALRM.sa_handler = timeout_handler;
 	actALRM.sa_mask = set;
+	actALRM.sa_flags = 0;
 	sigaction(SIGALRM, &actALRM, NULL);
 	
     return 0;
@@ -227,6 +229,10 @@ int send_message(char *receiver, char* content) {
         printf("Receiver or content is NULL\n");
         return -1;
     }
+	if (strcmp(receiver, myinfo.process_name) == 0) {
+		printf("Cannot send to self\n");
+		return -1;
+	}
     // get the receiver's information
     if (get_process_info(receiver, &message_stats.receiver_info) < 0) {
         printf("Failed getting %s's information.\n", receiver);
@@ -287,6 +293,10 @@ int send_message(char *receiver, char* content) {
         pause();
     }
 	
+	if (message_stats.packet_status) {
+		free(message_stats.packet_status);
+	}
+	
     return 0;
 }
 
@@ -332,13 +342,13 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
     ackp.mtype = ACK;
     ackp.pid = pid;
     ackp.packet_num = packet_num;
+	ackp.message_id = message_id;
 
     int delay = rand() % MAX_DELAY;
     sleep(delay);
 
     // DONE send an ACK for the packet it received
-
-    if (msgsnd(mailbox_id, (void *) &ackp, sizeof(packet_t), IPC_NOWAIT) < 0) {
+    if (msgsnd(mailbox_id, (void *) &ackp, sizeof(packet_t), 0) < 0) {
         perror("ACK send failed");
         return -1;
     }
@@ -355,7 +365,7 @@ void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
     if(message->sender.pid == -1)
         message->sender = *sender;
     // if the packet is from a different sender
-    if(message->sender.process_name != sender->process_name)
+    if(strcmp(message->sender.process_name, sender->process_name) != 0)
         return;
     
     // DONE? if the packet is from a different message
@@ -367,21 +377,24 @@ void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
 	if (!message->data) {
 		message->data = (char *) malloc(packet->num_packets*PACKET_SIZE);
 	}
+	if (!message->is_received) {
+		message->is_received = (int *) malloc(packet->num_packets*sizeof(int));
+	}
+	
+    send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
+	printf("Send an ACK for packet %d to pid:%d\n", packet->packet_num, sender->pid);
 
     // if message is not a duplicate
-    if(message->is_received[packet->packet_num] == 0){
+    if(message->is_received[packet->packet_num] == 0) {
         message->is_received[packet->packet_num] = 1;
-        message->data[packet->packet_num*PACKET_SIZE] = packet->data;
+        strncpy(message->data + packet->packet_num*PACKET_SIZE, packet->data, PACKET_SIZE);
         message->num_packets_received++;
         if(message->num_packets_received == packet->num_packets){
             message->is_complete = 1;
 			message_id++;
+			printf("All packets received.\n");
         }
     }
-
-    send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
-	if (!message->is_complete)
-		pause();
 }
 
 void set_message_id(int m_id) {
@@ -412,21 +425,36 @@ void handle_ACK(packet_t *packet) {
 	alarm(0);
 	num_timeouts = 0;
 	printf("Receive an ACK for packet [%d]\n", packet->packet_num);
+	message_stats.packet_status[packet->packet_num].ACK_received = 1;
 	message_stats.num_packets_received++;
 	// if all packets have been received
 	if (message_stats.num_packets_received == message_stats.num_packets) {
 		message_stats.is_sending = 0;
+		printf("All packets sent.\n");
 		return;
 	}
-	
 	int next_packet;
-	// if no more packets to send
-	if ((next_packet = get_next_packet(message_stats.num_packets)) == -1) {
-		return;
+	if (message_stats.num_packets_received == 1) {
+		int i;
+		for (i = 0; i < WINDOW_SIZE; i++) {
+			// if no more packets to send
+			if ((next_packet = get_next_packet(message_stats.num_packets)) == -1) {
+				return;
+			}
+			message_stats.packet_status[next_packet].is_sent = 1;
+			send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid);
+			printf("Send a packet [%d] to pid:%d\n", next_packet, message_stats.receiver_info.pid);
+		}
 	}
-	message_stats.packet_status[next_packet].is_sent = 1;
-	send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid);
-	printf("Send a packet [%d] to pid:%d\n", next_packet, message_stats.receiver_info.pid);
+	else {
+		// if no more packets to send
+		if ((next_packet = get_next_packet(message_stats.num_packets)) == -1) {
+			return;
+		}
+		message_stats.packet_status[next_packet].is_sent = 1;
+		send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid);
+		printf("Send a packet [%d] to pid:%d\n", next_packet, message_stats.receiver_info.pid);
+	}
 }
 
 /**
@@ -445,21 +473,23 @@ int get_packet_from_mailbox(int mailbox_id) {
  * If the packet is ACK, update the status of the packet.
  */
 void receive_packet(int sig) {
-	if (1) {
-		printf("HIHIHI\n");
+	if (!drop_packet()) {
 		packet_t *packet = (packet_t *) malloc(sizeof(packet_t));
-		if (msgrcv(mailbox_id, packet, sizeof(packet_t), get_packet_from_mailbox(mailbox_id), 0) < 0) {
+		if (msgrcv(mailbox_id, packet, sizeof(packet_t), 0, 0) < 0) {
 			printf("msgrcv failed\n");
 			return;
 		}
 		if (packet->mtype == DATA) {
 			process_t *process = (process_t *) malloc(sizeof(process_t));
 			get_process_info(packet->process_name, process);
-			handle_data(packet, process, process->key);
+			int mqid = msgget((key_t)process->key, 0);
+			handle_data(packet, process, mqid);
+			free(process);
 		}
 		else {
 			handle_ACK(packet);
 		}
+		free(packet);
 	}
 }
 
@@ -469,7 +499,7 @@ void receive_packet(int sig) {
  */
 int receive_message(char *data) {
     
-	message = (message_t*) malloc(sizeof(message_t));
+	message = (message_t *) malloc(sizeof(message_t));
     message->sender.pid = -1;
     message->num_packets_received = 0;
     message->is_complete = 0;
@@ -479,6 +509,16 @@ int receive_message(char *data) {
     }
 	
 	strcpy(data, message->data);
+	
+	if (message) {
+		if (message->is_received) {
+			//free(message->is_received);
+		}
+		if (message->data) {
+			//free(message->data);
+		}
+		//free(message);
+	}
     
     return 0;
     
