@@ -493,13 +493,14 @@ int get_packet_from_mailbox(int mailbox_id) {
 void receive_packet(int sig) {
 	while(get_packet_from_mailbox(mailbox_id) != 0)
 	{
-		if (!drop_packet()) {
-			packet_t *packet = (packet_t *) malloc(sizeof(packet_t));
-			if (msgrcv(mailbox_id, packet, sizeof(packet_t), 0, 0) < 0) {
-				printf("msgrcv failed\n");
-				free(packet);
-				return;
-			}
+		packet_t *packet = (packet_t *) malloc(sizeof(packet_t));
+		if (msgrcv(mailbox_id, packet, sizeof(packet_t), 0, 0) < 0) {
+			printf("msgrcv failed\n");
+			free(packet);
+			return;
+		}
+		if (!drop_packet())
+		{
 			if (packet->mtype == DATA) {
 				process_t *process = (process_t *) malloc(sizeof(process_t));
 				get_process_info(packet->process_name, process);
@@ -510,8 +511,8 @@ void receive_packet(int sig) {
 			else {
 				handle_ACK(packet);
 			}
-			free(packet);
 		}
+		free(packet);
 	}
 }
 
@@ -525,6 +526,7 @@ int receive_message(char *data) {
     message->sender.pid = -1;
     message->num_packets_received = 0;
     message->is_complete = 0;
+    message->is_received = NULL;
     
     while(!message->is_complete){
 		pause();
