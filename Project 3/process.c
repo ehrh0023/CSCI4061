@@ -364,7 +364,6 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
  * packet from a different sender, etc.
  */
 void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
-	int i;
 	// if from an old message
 	if (message_id > packet->message_id && packet->message_id > -1) {
 		send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
@@ -492,24 +491,27 @@ int get_packet_from_mailbox(int mailbox_id) {
  * If the packet is ACK, update the status of the packet.
  */
 void receive_packet(int sig) {
-	if (!drop_packet()) {
-		packet_t *packet = (packet_t *) malloc(sizeof(packet_t));
-		if (msgrcv(mailbox_id, packet, sizeof(packet_t), 0, 0) < 0) {
-			printf("msgrcv failed\n");
+	while(get_packet_from_mailbox(mailbox_id) != 0)
+	{
+		if (!drop_packet()) {
+			packet_t *packet = (packet_t *) malloc(sizeof(packet_t));
+			if (msgrcv(mailbox_id, packet, sizeof(packet_t), 0, 0) < 0) {
+				printf("msgrcv failed\n");
+				free(packet);
+				return;
+			}
+			if (packet->mtype == DATA) {
+				process_t *process = (process_t *) malloc(sizeof(process_t));
+				get_process_info(packet->process_name, process);
+				int mqid = msgget((key_t)process->key, 0);
+				handle_data(packet, process, mqid);
+				free(process);
+			}
+			else {
+				handle_ACK(packet);
+			}
 			free(packet);
-			return;
 		}
-		if (packet->mtype == DATA) {
-			process_t *process = (process_t *) malloc(sizeof(process_t));
-			get_process_info(packet->process_name, process);
-			int mqid = msgget((key_t)process->key, 0);
-			handle_data(packet, process, mqid);
-			free(process);
-		}
-		else {
-			handle_ACK(packet);
-		}
-		free(packet);
 	}
 }
 
