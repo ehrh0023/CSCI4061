@@ -269,6 +269,7 @@ int send_message(char *receiver, char* content) {
         printf("Failed paritioning data into packets.\n");
         message_stats.is_sending = 0;
         free(message_stats.packet_status);
+        message_stats.packet_status = NULL:
         return -1;
     }
 
@@ -293,8 +294,9 @@ int send_message(char *receiver, char* content) {
         pause();
     }
 	
-	if (message_stats.packet_status) {
+	if (message_stats.packet_status != NULL) {
 		free(message_stats.packet_status);
+		message_stats.packet_status = NULL;
 	}
 	
     return 0;
@@ -383,10 +385,10 @@ void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
 		return;
 	}
 	
-	if (!message->data) {
+	if (message->data == NULL) {
 		message->data = (char *) malloc(packet->num_packets*PACKET_SIZE);
 	}
-	if (!message->is_received) {
+	if (message->is_received == NULL) {
 		message->is_received = (int *) malloc(packet->num_packets*sizeof(int));
 	}
 	
@@ -492,6 +494,7 @@ void receive_packet(int sig) {
 		packet_t *packet = (packet_t *) malloc(sizeof(packet_t));
 		if (msgrcv(mailbox_id, packet, sizeof(packet_t), 0, 0) < 0) {
 			printf("msgrcv failed\n");
+			free(packet);
 			return;
 		}
 		if (packet->mtype == DATA) {
@@ -499,12 +502,12 @@ void receive_packet(int sig) {
 			get_process_info(packet->process_name, process);
 			int mqid = msgget((key_t)process->key, 0);
 			handle_data(packet, process, mqid);
-			//free(process);
+			free(process);
 		}
 		else {
 			handle_ACK(packet);
 		}
-		//free(packet);
+		free(packet);
 	}
 }
 
@@ -525,14 +528,17 @@ int receive_message(char *data) {
 	
 	strcpy(data, message->data);
 	
-	if (message) {
-		if (message->is_received) {
-			//free(message->is_received);
+	if (message != NULL) {
+		if (message->is_received != NULL) {
+			free(message->is_received);
+			message->is_received = NULL;
 		}
-		if (message->data) {
-			//free(message->data);
+		if (message->data != NULL) {
+			free(message->data);
+			message->data = NULL;
 		}
-		//free(message);
+		free(message);
+		message = NULL;
 	}
     
     return 0;
