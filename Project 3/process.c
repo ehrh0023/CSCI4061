@@ -346,7 +346,7 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
     ackp.packet_num = packet_num;
 	ackp.message_id = message_id;
 
-    int delay = rand() % MAX_DELAY;
+    int delay = (MAX_DELAY == 0) ? 0 : rand() % MAX_DELAY;
     sleep(delay);
 
     // DONE send an ACK for the packet it received
@@ -526,6 +526,7 @@ int receive_message(char *data) {
     message->sender.pid = -1;
     message->num_packets_received = 0;
     message->is_complete = 0;
+	message->data = NULL;
     message->is_received = NULL;
     
     while(!message->is_complete){
