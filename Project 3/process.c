@@ -364,6 +364,7 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
  * packet from a different sender, etc.
  */
 void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
+	int i;
 	// if from an old message
 	if (message_id > packet->message_id && packet->message_id > -1) {
 		send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
@@ -389,7 +390,7 @@ void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
 		message->data = (char *) malloc(packet->num_packets*PACKET_SIZE);
 	}
 	if (message->is_received == NULL) {
-		message->is_received = (int *) malloc(packet->num_packets*sizeof(int));
+		message->is_received = (int *) calloc(packet->num_packets, sizeof(int));
 	}
 	
     send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
@@ -439,6 +440,7 @@ void handle_ACK(packet_t *packet) {
 	message_stats.packet_status[packet->packet_num].ACK_received = 1;
 	message_stats.num_packets_received++;
 	// if all packets have been received
+	
 	if (message_stats.num_packets_received == message_stats.num_packets) {
 		message_stats.is_sending = 0;
 		printf("All packets sent.\n");
