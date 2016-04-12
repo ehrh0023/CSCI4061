@@ -442,7 +442,10 @@ void handle_ACK(packet_t *packet) {
 				return;
 			}
 			message_stats.packet_status[next_packet].is_sent = 1;
-			send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid);
+			if (send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid) < 0) {
+				printf("send_packet error\n");
+				return;
+			}
 			printf("Send a packet [%d] to pid:%d\n", next_packet, message_stats.receiver_info.pid);
 		}
 	}
@@ -452,7 +455,10 @@ void handle_ACK(packet_t *packet) {
 			return;
 		}
 		message_stats.packet_status[next_packet].is_sent = 1;
-		send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid);
+		if (send_packet(&(message_stats.packet_status[next_packet].packet), message_stats.mailbox_id, message_stats.receiver_info.pid) < 0) {
+			printf("send_packet error\n");
+			return;
+		}
 		printf("Send a packet [%d] to pid:%d\n", next_packet, message_stats.receiver_info.pid);
 	}
 }
@@ -484,12 +490,12 @@ void receive_packet(int sig) {
 			get_process_info(packet->process_name, process);
 			int mqid = msgget((key_t)process->key, 0);
 			handle_data(packet, process, mqid);
-			free(process);
+			//free(process);
 		}
 		else {
 			handle_ACK(packet);
 		}
-		free(packet);
+		//free(packet);
 	}
 }
 
