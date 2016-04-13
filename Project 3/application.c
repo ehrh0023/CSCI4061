@@ -44,8 +44,10 @@ int main(int argc, char** argv) {
     signal(SIGINT, cleanup);
 
     while(1) {
+		errno = 0; // fixes interrupt bug with scanf()
         printf("\nRole (sender/receiver): ");
-        scanf("%s", role);
+        while(scanf("%s", role) && errno == EINTR)
+			errno = 0; // fixes interrupt bug with scanf()
 
         if (strcmp(role, "sender") == 0) {
             // get the receiver name and the data

@@ -54,10 +54,14 @@ int init(char *process_name, key_t key, int wsize, int delay, int to, int drop) 
     }
     fclose(fp);
 
-    WINDOW_SIZE = wsize;
-    MAX_DELAY = delay;
+    WINDOW_SIZE = (wsize < 1) ? 1 : wsize; // WINDOW_SIZE must be greater than 1
+    MAX_DELAY = (delay < 0) ? 0 : delay; // MAX_DELAY must be greater than or equal to 0
+	if (to <= 0) { // TIMEOUT must be greater than 0
+		printf("Cannot set timeout to less than or equal 0\n");
+		return -1;
+	}
     TIMEOUT = to;
-    DROP_RATE = drop;
+    DROP_RATE = (drop < 0) ? 0 : (drop > 100) ? 100 : drop; // bound DROP_RATE between 0 and 100
 
     printf("[%s] pid: %d, key: %d\n", myinfo.process_name, myinfo.pid, myinfo.key);
     printf("window_size: %d, max delay: %d, timeout: %d, drop rate: %d%%\n", WINDOW_SIZE, MAX_DELAY, TIMEOUT, DROP_RATE);
@@ -335,8 +339,8 @@ void timeout_handler(int sig) {
 int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
     // DONE construct an ACK packet
 
-    if(mailbox_id == -1 || pid == -1 || packet_num == -1){
-        printf("send_ACK criteria missing");
+    if (mailbox_id == -1 || pid == -1 || packet_num == -1){
+        printf("send_ACK criteria missing\n");
         return -1;
     }
 
@@ -346,8 +350,11 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
     ackp.packet_num = packet_num;
 	ackp.message_id = message_id;
 
+	// don't divide by zero
     int delay = (MAX_DELAY == 0) ? 0 : rand() % MAX_DELAY;
-    sleep(delay);
+	// if we aren't receiving, don't delay
+    if (message != NULL && !message->is_complete)
+		sleep(delay);
 
     // DONE send an ACK for the packet it received
     if (msgsnd(mailbox_id, (void *) &ackp, sizeof(packet_t), 0) < 0) {
@@ -366,7 +373,10 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
 void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
 	// if from an old message
 	if (message_id > packet->message_id && packet->message_id > -1) {
+		int cur_message_id = message_id; // need to change the message_id to resend old ACK
+		message_id = packet->message_id;
 		send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
+		message_id = cur_message_id;
 		return;
 	}
 	// if not receiving
@@ -396,11 +406,11 @@ void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
 	printf("Send an ACK for packet %d to pid:%d\n", packet->packet_num, sender->pid);
 
     // if message is not a duplicate
-    if(message->is_received[packet->packet_num] == 0) {
+    if (message->is_received[packet->packet_num] == 0) {
         message->is_received[packet->packet_num] = 1;
         strncpy(message->data + packet->packet_num*PACKET_SIZE, packet->data, PACKET_SIZE);
         message->num_packets_received++;
-        if(message->num_packets_received == packet->num_packets){
+        if (message->num_packets_received == packet->num_packets){
             message->is_complete = 1;
 			message_id++;
 			printf("All packets received.\n");
@@ -422,6 +432,11 @@ void set_message_id(int m_id) {
  * You should handle unexpected cases such as duplicate ACKs, ACK for completed message, etc.
  */
 void handle_ACK(packet_t *packet) {
+	// if we aren't in a role anymore
+	if (message_stats.packet_status == NULL) {
+		return;
+	}
+	
 	// if a message_id is not yet set
 	if (message_stats.packet_status[0].packet.message_id == -1) {
 		set_message_id(packet->message_id);
