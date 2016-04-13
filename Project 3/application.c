@@ -1,3 +1,11 @@
+/* CSci4061 Assignment 3
+ * Name: Caleb Biasco, Dennis Ehrhardt, Meghan Jonas
+ * X500: biasc007, ehrh0023, jonas050 */
+ 
+/* NOTE: application.c was modified to prevent a bug that occurs when using scanf() along with
+ * signal interrupts. The only modification is a while loop around scanf() that checks if a
+ * signal interruption occurs and, if so, rechecks input. */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

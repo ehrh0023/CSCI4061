@@ -1,3 +1,7 @@
+/* CSci4061 Assignment 3
+ * Name: Caleb Biasco, Dennis Ehrhardt, Meghan Jonas
+ * X500: biasc007, ehrh0023, jonas050 */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -30,7 +34,6 @@ int is_receiving = 0; // a helper variable may be used to handle multiple sender
 int num_timeouts = 0; // counter variable for sender timeouts
 
 /**
- * DONE
  * 1. Save the process information to a file and a process structure for future use.
  * 2. Setup a message queue with a given key.
  * 3. Setup the signal handlers (SIGIO for handling packet, SIGALRM for timeout).
@@ -130,7 +133,7 @@ int get_process_info(char *process_name, process_t *info) {
 }
 
 /**
- * DONE Send a packet to a mailbox identified by the mailbox_id, and send a SIGIO to the pid.
+ * Send a packet to a mailbox identified by the mailbox_id, and send a SIGIO to the pid.
  * Return 0 if success, -1 otherwise.
  */
 int send_packet(packet_t *packet, int mailbox_id, int pid) {
@@ -223,7 +226,7 @@ int drop_packet() {
 }
 
 /**
- * DONE Send a message (broken down into multiple packets) to another process.
+ * Send a message (broken down into multiple packets) to another process.
  * We first need to get the receiver's information and construct the status of
  * each of the packet.
  * Return 0 if success, -1 otherwise.
@@ -277,10 +280,9 @@ int send_message(char *receiver, char* content) {
         return -1;
     }
 
-    // DONE send packets to the receiver
-    // the number of packets sent at a time depends on the WINDOW_SIZE.
-    // you need to change the message_id of each packet (initialized to -1)
-    // with the message_id included in the ACK packet sent by the receiver
+    // send packets to the receiver depending on WINDOW_SIZE
+	// the message_id of the packets will be set after the first packet is sent
+	// and an ACK is received
 
 	int first_packet;
 	if ((first_packet = get_next_packet(num_packets)) == -1) {
@@ -307,10 +309,11 @@ int send_message(char *receiver, char* content) {
 }
 
 /**
- * DONE Handle TIMEOUT. Resend previously sent packets whose ACKs have not been
+ * Handle TIMEOUT. Resend previously sent packets whose ACKs have not been
  * received yet. Reset the TIMEOUT.
  */
 void timeout_handler(int sig) {
+	printf("TIMEOUT!\n");
 	num_timeouts++;
 	if (num_timeouts == MAX_TIMEOUT) {
 		num_timeouts = 0;
@@ -319,7 +322,6 @@ void timeout_handler(int sig) {
 	}
 	int i;
 	int message_length = message_stats.num_packets;
-	printf("TIMEOUT!\n");
 	for (i = 0; i < message_length; i++) {
 		if (message_stats.packet_status[i].is_sent && !message_stats.packet_status[i].ACK_received) {
 			if (send_packet(&(message_stats.packet_status[i].packet), message_stats.mailbox_id, message_stats.receiver_info.pid) < 0) {
@@ -332,7 +334,7 @@ void timeout_handler(int sig) {
 }
 
 /**
- * DONE Send an ACK to the sender's mailbox.
+ * Send an ACK to the sender's mailbox.
  * The message id is determined by the receiver and has to be included in the ACK packet.
  * Return 0 if success, -1 otherwise.
  */
@@ -366,17 +368,17 @@ int send_ACK(int mailbox_id, pid_t pid, int packet_num) {
 }
 
 /**
- * TODO Handle DATA packet. Save the packet's data and send an ACK to the sender.
+ * Handle DATA packet. Save the packet's data and send an ACK to the sender.
  * You should handle unexpected cases such as duplicate packet, packet for a different message,
  * packet from a different sender, etc.
  */
 void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
 	// if from an old message
 	if (message_id > packet->message_id && packet->message_id > -1) {
-		int cur_message_id = message_id; // need to change the message_id to resend old ACK
+		int cur_message_id = message_id; // changes message_id to resend old ACK
 		message_id = packet->message_id;
 		send_ACK(sender_mailbox_id, packet->pid, packet->packet_num);
-		message_id = cur_message_id;
+		message_id = cur_message_id; // changes message_id back to what it should be
 		return;
 	}
 	// if not receiving
@@ -384,17 +386,22 @@ void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
 		return;
 	}
 	
-    if (message->sender.pid == -1)
+	// if first message
+    if (message->sender.pid == -1) {
         message->sender = *sender;
+	}
+	
     // if the packet is from a different sender
-    if (strcmp(message->sender.process_name, sender->process_name) != 0)
+    if (strcmp(message->sender.process_name, sender->process_name) != 0) {
         return;
+	}
     
-    // DONE if the packet is from a different message
+    // if the packet is from a different message
 	if (message->num_packets_received > 0 && packet->message_id == -1) {
 		return;
 	}
 	
+	// initialize the message pointers
 	if (message->data == NULL) {
 		message->data = (char *) malloc(packet->num_packets*PACKET_SIZE);
 	}
@@ -418,6 +425,9 @@ void handle_data(packet_t *packet, process_t *sender, int sender_mailbox_id) {
     }
 }
 
+/**
+ * Walks through every packet in the message and sets their message_id to m_id
+ */
 void set_message_id(int m_id) {
 	int i;
 	int message_length = message_stats.num_packets;
@@ -427,7 +437,7 @@ void set_message_id(int m_id) {
 }
 
 /**
- * DONE: Handle ACK packet. Update the status of the packet to indicate that the packet
+ * Handle ACK packet. Update the status of the packet to indicate that the packet
  * has been successfully received and reset the TIMEOUT.
  * You should handle unexpected cases such as duplicate ACKs, ACK for completed message, etc.
  */
@@ -453,13 +463,14 @@ void handle_ACK(packet_t *packet) {
 	printf("Receive an ACK for packet [%d]\n", packet->packet_num);
 	message_stats.packet_status[packet->packet_num].ACK_received = 1;
 	message_stats.num_packets_received++;
-	// if all packets have been received
 	
+	// if all packets have been received
 	if (message_stats.num_packets_received == message_stats.num_packets) {
 		message_stats.is_sending = 0;
 		printf("All packets sent.\n");
 		return;
 	}
+	
 	int next_packet;
 	if (message_stats.num_packets_received == 1) {
 		int i;
@@ -501,7 +512,7 @@ int get_packet_from_mailbox(int mailbox_id) {
 }
 
 /**
- * DONE: Receive a packet. (don't forget to test drop_packet)
+ * Receive a packet. (don't forget to test drop_packet)
  * If the packet is DATA, send an ACK packet and SIGIO to the sender.
  * If the packet is ACK, update the status of the packet.
  */
@@ -532,7 +543,7 @@ void receive_packet(int sig) {
 }
 
 /**
- * DONE Initialize the message structure and wait for a message from another process.
+ * Initialize the message structure and wait for a message from another process.
  * Save the message content to the data and return 0 if success, -1 otherwise
  */
 int receive_message(char *data) {
@@ -544,7 +555,7 @@ int receive_message(char *data) {
 	message->data = NULL;
     message->is_received = NULL;
     
-    while(!message->is_complete){
+    while(!message->is_complete) {
 		pause();
     }
 	
