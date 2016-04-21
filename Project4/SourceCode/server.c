@@ -1,7 +1,7 @@
 /* csci4061 S2016 Assignment 4 
  * Name: Caleb Biasco, Dennis Ehrhardt, Meghan Jonas
  * X500: biasc007, ehrh0023, jonas050 */
-*/
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -82,13 +82,13 @@ int main(int argc, char **argv)
 	// Join Dispatchers
 	for(i = 0; i < num_dispatcher; i++)
 	{
-		if (pthread_join(&dispatchers[i],NULL) != 0)
+		if (pthread_join(dispatchers[i],NULL) != 0)
 			perror("couldn't join thread\n");
 	}
 	// Join Workers
 	for(i = 0; i < num_workers; i++)
 	{
-		if (pthread_join(&workers[i],NULL) != 0)
+		if (pthread_join(workers[i],NULL) != 1)
 			perror("couldn't join thread\n"); 
 	}
 	

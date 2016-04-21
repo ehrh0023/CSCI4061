@@ -6,5 +6,5 @@ web_server: server.c
 	${CC} -o web_server server.c util.o ${LDFLAGS}
 
 clean:
-	rm server.o util.o web_server
+	rm web_server
 
