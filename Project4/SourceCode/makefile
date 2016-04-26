@@ -3,7 +3,7 @@ CFLAGS = -D_REENTRANT
 LDFLAGS = -lpthread
 
 web_server: server.c
-	${CC} -o web_server server.c util.o ${LDFLAGS}
+	${CC} -g -o web_server server.c util.o ${LDFLAGS}
 
 clean:
 	rm web_server

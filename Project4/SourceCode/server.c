@@ -14,7 +14,7 @@
 
 #define MAX_THREADS 100
 #define MAX_QUEUE_SIZE 100
-#define MAX_REQUEST_LENGTH 64
+#define MAX_REQUEST_LENGTH 1024
 
 //Structure for queue.
 typedef struct request_queue
@@ -28,17 +28,104 @@ int port;
 int cache_size;
 
 // Buffer Information
-request_queue_t queue[MAX_REQUEST_LENGTH];
+request_queue_t queue[MAX_QUEUE_SIZE];
 int queue_length;
-int queue_index = 0;
+int queue_in = 0;
+int queue_out = 0;
+int count = 0;
+pthread_cond_t queue_open = PTHREAD_COND_INITIALIZER;
+pthread_cond_t queue_content = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t lock_access = PTHREAD_MUTEX_INITIALIZER;
 
-void * dispatch(void * arg)
+const char *get_filename_ext(const char *filename) {
+	const char *dot = strrchr(filename, '.');
+	if (!dot || dot == filename)
+		return "";
+	return dot + 1;
+}
+
+void * dispatch(void * arg) //this might need chdir, I'm not sure
 {
+	while (1) {
+		int fd = accept_connection();
+		if (fd < 0) {
+			pthread_exit(0);
+		}
+		
+		char filename[MAX_REQUEST_LENGTH];
+		pthread_mutex_lock(&lock_access);
+		if (get_request(fd, filename) != 0) {
+			// error handling here
+			// no exit() for this one
+			//
+			//
+		}
+		while (count >= queue_length) {
+			pthread_cond_wait(&queue_open, &lock_access);
+		}
+		
+		queue[queue_in].m_socket = fd;
+		strcpy(queue[queue_in].m_szRequest, filename);
+		queue_in = (queue_in + 1) % queue_length;
+		count++;
+		pthread_cond_signal(&queue_content);
+		pthread_mutex_unlock(&lock_access);
+	}
 	return NULL;
 }
 
 void * worker(void * arg)
 {
+	while (1) {
+		char *buf;
+		struct stat sb;
+		int fd;
+		pthread_mutex_lock(&lock_access);
+		if (count == 0) {
+			pthread_cond_wait(&queue_content, &lock_access);
+		}
+		
+		if (stat(queue[queue_out].m_szRequest+1, &sb) < 0) {
+			perror("stat failure");
+			pthread_mutex_unlock(&lock_access);
+			continue;
+		}
+		fd = open(queue[queue_out].m_szRequest+1, 0);
+		
+		buf = malloc(sb.st_size);
+		if (read(fd, buf, sb.st_size) < 0) {
+			perror("read failure");
+			pthread_mutex_unlock(&lock_access);
+			continue;
+		}
+		
+		char content_type[12];
+		char ext[5];
+		strcpy(ext, get_filename_ext(queue[queue_out].m_szRequest));
+		if (strcmp(ext, "html") == 0 || strcmp(ext, "htm") == 0) {
+			strcpy(content_type, "text/html");
+		}
+		else if (strcmp(ext, "jpg") == 0 || strcmp(ext, "jpeg") == 0) {
+			strcpy(content_type, "image/jpeg");
+		}
+		else if (strcmp(ext, "gif") == 0) {
+			strcpy(content_type, "image/gif");
+		}
+		else {
+			strcpy(content_type, "text/plain");
+		}
+		
+		if (return_result(queue[queue_out].m_socket, content_type, buf, sb.st_size) != 0) {
+			perror("return_result failure");
+			pthread_mutex_unlock(&lock_access);
+			continue;
+		}
+		free(buf);
+		queue_out = (queue_out + 1) % queue_length;
+		count--;
+		pthread_cond_signal(&queue_open);
+		pthread_mutex_unlock(&lock_access);
+	}
 	return NULL;
 }
 
@@ -52,31 +139,35 @@ int main(int argc, char **argv)
 	//Error check first.
 	if(argc != 6 && argc != 7)
 	{
-			printf("usage: %s port path num_dispatcher num_workers queue_length [cache_size]\n", argv[0]);
-			return -1;
+		printf("usage: %s port path num_dispatcher num_workers queue_length [cache_size]\n", argv[0]);
+		return -1;
 	}
 
-	printf("Call init() first and make a dispather and worker threads\n");
+	printf("Call init() first and make a dispatcher and worker threads\n");
 	port = atoi(argv[1]);
 	init(port);
+	chdir(argv[2]);
 	
 	num_dispatcher = atoi(argv[3]);
 	num_workers = atoi(argv[4]);
 	
 	queue_length = atoi(argv[5]);
-	cache_size = atoi(argv[6]);
+	if (argv[6] != 0)
+		cache_size = atoi(argv[6]);
+	else
+		cache_size = 0;
 	
 	// Create Dispatchers
 	for(i = 0; i < num_dispatcher; i++)
 	{
 		if (pthread_create(&dispatchers[i],NULL,dispatch,NULL))
-		  perror("couldn't create thread\n");		
+			perror("couldn't create thread\n");		
 	}
 	// Create Workers
 	for(i = 0; i < num_workers; i++)
 	{
 		if (pthread_create(&workers[i],NULL,worker,NULL))
-		  perror("couldn't create thread\n");		
+			perror("couldn't create thread\n");		
 	}
 	
 	// Join Dispatchers
