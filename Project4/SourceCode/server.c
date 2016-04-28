@@ -27,6 +27,7 @@ typedef struct request_queue
 int port;
 int cache_size;
 
+
 // Buffer Information
 request_queue_t queue[MAX_QUEUE_SIZE];
 int queue_length;
@@ -37,6 +38,9 @@ pthread_cond_t queue_open = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_content = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lock_access = PTHREAD_MUTEX_INITIALIZER;
 
+//Dispacther Info
+int num_dispatchers = 0;
+
 const char *get_filename_ext(const char *filename) {
 	const char *dot = strrchr(filename, '.');
 	if (!dot || dot == filename)
@@ -46,9 +50,17 @@ const char *get_filename_ext(const char *filename) {
 
 void * dispatch(void * arg) //this might need chdir, I'm not sure
 {
+	pthread_mutex_lock(&lock_access);
+	num_dispatchers++;
+	pthread_mutex_unlock(&lock_access);
+		
 	while (1) {
 		int fd = accept_connection();
 		if (fd < 0) {
+			pthread_mutex_lock(&lock_access);
+			num_dispatchers--;
+			pthread_mutex_unlock(&lock_access);
+	
 			pthread_exit(0);
 		}
 		
@@ -58,7 +70,8 @@ void * dispatch(void * arg) //this might need chdir, I'm not sure
 			// error handling here
 			// no exit() for this one
 			//
-			//
+			pthread_mutex_unlock(&lock_access);
+			continue;
 		}
 		while (count >= queue_length) {
 			pthread_cond_wait(&queue_open, &lock_access);
@@ -71,6 +84,11 @@ void * dispatch(void * arg) //this might need chdir, I'm not sure
 		pthread_cond_signal(&queue_content);
 		pthread_mutex_unlock(&lock_access);
 	}
+	
+	pthread_mutex_lock(&lock_access);
+	num_dispatchers--;
+	pthread_mutex_unlock(&lock_access);
+	
 	return NULL;
 }
 
@@ -124,6 +142,11 @@ void * worker(void * arg)
 		queue_out = (queue_out + 1) % queue_length;
 		count--;
 		pthread_cond_signal(&queue_open);
+		if(count == 0 && num_dispatchers == 0)
+		{
+			pthread_mutex_unlock(&lock_access);
+			return NULL;
+		}
 		pthread_mutex_unlock(&lock_access);
 	}
 	return NULL;
