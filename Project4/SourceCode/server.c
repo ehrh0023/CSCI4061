@@ -26,7 +26,7 @@ typedef struct request_queue
 // Global Variables
 int port;
 int cache_size;
-
+int wNum = 0;
 
 // Buffer Information
 request_queue_t queue[MAX_QUEUE_SIZE];
@@ -38,8 +38,8 @@ pthread_cond_t queue_open = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_content = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lock_access = PTHREAD_MUTEX_INITIALIZER;
 
-//Dispacther Info
-int num_dispatchers = 0;
+//Dispacther Info *No longer used*
+//int num_dispatchers = 0;
 
 const char *get_filename_ext(const char *filename) {
 	const char *dot = strrchr(filename, '.');
@@ -48,30 +48,19 @@ const char *get_filename_ext(const char *filename) {
 	return dot + 1;
 }
 
-void * dispatch(void * arg) //this might need chdir, I'm not sure
+void * dispatch(void * arg)
 {
-	pthread_mutex_lock(&lock_access);
-	num_dispatchers++;
-	pthread_mutex_unlock(&lock_access);
-		
 	while (1) {
 		int fd = accept_connection();
 		if (fd < 0) {
-			pthread_mutex_lock(&lock_access);
-			num_dispatchers--;
-			pthread_mutex_unlock(&lock_access);
-	
-			pthread_exit(0);
+			continue; // according to TA Nishad Trivedi, do nothing here
 		}
 		
 		char filename[MAX_REQUEST_LENGTH];
 		pthread_mutex_lock(&lock_access);
 		if (get_request(fd, filename) != 0) {
-			// error handling here
-			// no exit() for this one
-			//
 			pthread_mutex_unlock(&lock_access);
-			continue;
+			continue; // according to TA Nishad Trivedi, do nothing here
 		}
 		while (count >= queue_length) {
 			pthread_cond_wait(&queue_open, &lock_access);
@@ -80,14 +69,11 @@ void * dispatch(void * arg) //this might need chdir, I'm not sure
 		queue[queue_in].m_socket = fd;
 		strcpy(queue[queue_in].m_szRequest, filename);
 		queue_in = (queue_in + 1) % queue_length;
+		printf("+++queue_in is now %d\n", queue_in);
 		count++;
 		pthread_cond_signal(&queue_content);
 		pthread_mutex_unlock(&lock_access);
 	}
-	
-	pthread_mutex_lock(&lock_access);
-	num_dispatchers--;
-	pthread_mutex_unlock(&lock_access);
 	
 	return NULL;
 }
@@ -103,17 +89,36 @@ void * worker(void * arg)
 			pthread_cond_wait(&queue_content, &lock_access);
 		}
 		
-		if (stat(queue[queue_out].m_szRequest+1, &sb) < 0) {
-			perror("stat failure");
+		if (strcmp(queue[queue_out].m_szRequest, "/favicon.ico") == 0) {
+			queue_out = (queue_out + 1) % queue_length;
+			count--;
+			pthread_cond_signal(&queue_open);
 			pthread_mutex_unlock(&lock_access);
+			continue; // skips favicon.ico request from Google Chrome browser
+		}
+		
+		if (stat(queue[queue_out].m_szRequest+1, &sb) < 0) {
+			buf = (char *) malloc(1060);
+			sprintf(buf, "BAD REQUEST: Could not find \"%s\"", queue[queue_out].m_szRequest);
+			return_error(queue[queue_out].m_socket, buf);
+			queue_out = (queue_out + 1) % queue_length;
+			count--;
+			pthread_cond_signal(&queue_open);
+			pthread_mutex_unlock(&lock_access);
+			free(buf);
 			continue;
 		}
 		fd = open(queue[queue_out].m_szRequest+1, 0);
 		
-		buf = malloc(sb.st_size);
+		buf = (char *) malloc(sb.st_size);
 		if (read(fd, buf, sb.st_size) < 0) {
 			perror("read failure");
+			return_error(queue[queue_out].m_socket, buf);
+			queue_out = (queue_out + 1) % queue_length;
+			count--;
+			pthread_cond_signal(&queue_open);
 			pthread_mutex_unlock(&lock_access);
+			free(buf);
 			continue;
 		}
 		
@@ -135,19 +140,21 @@ void * worker(void * arg)
 		
 		if (return_result(queue[queue_out].m_socket, content_type, buf, sb.st_size) != 0) {
 			perror("return_result failure");
+			return_error(queue[queue_out].m_socket, buf);
+			queue_out = (queue_out + 1) % queue_length;
+			count--;
+			pthread_cond_signal(&queue_open);
 			pthread_mutex_unlock(&lock_access);
+			free(buf);
 			continue;
 		}
 		free(buf);
 		queue_out = (queue_out + 1) % queue_length;
+		printf("+++queue_out is now %d\n", queue_out);
 		count--;
 		pthread_cond_signal(&queue_open);
-		if(count == 0 && num_dispatchers == 0)
-		{
-			pthread_mutex_unlock(&lock_access);
-			return NULL;
-		}
 		pthread_mutex_unlock(&lock_access);
+		sleep(3);
 	}
 	return NULL;
 }
@@ -166,7 +173,7 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	printf("Call init() first and make a dispatcher and worker threads\n");
+	printf("Creating dispatcher and worker threads...\n");
 	port = atoi(argv[1]);
 	init(port);
 	chdir(argv[2]);
@@ -192,6 +199,8 @@ int main(int argc, char **argv)
 		if (pthread_create(&workers[i],NULL,worker,NULL))
 			perror("couldn't create thread\n");		
 	}
+	
+	printf("Threads created!\n");
 	
 	// Join Dispatchers
 	for(i = 0; i < num_dispatcher; i++)
