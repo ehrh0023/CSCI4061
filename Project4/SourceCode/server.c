@@ -69,7 +69,6 @@ void * dispatch(void * arg)
 		queue[queue_in].m_socket = fd;
 		strcpy(queue[queue_in].m_szRequest, filename);
 		queue_in = (queue_in + 1) % queue_length;
-		printf("+++queue_in is now %d\n", queue_in);
 		count++;
 		pthread_cond_signal(&queue_content);
 		pthread_mutex_unlock(&lock_access);
@@ -150,7 +149,6 @@ void * worker(void * arg)
 		}
 		free(buf);
 		queue_out = (queue_out + 1) % queue_length;
-		printf("+++queue_out is now %d\n", queue_out);
 		count--;
 		pthread_cond_signal(&queue_open);
 		pthread_mutex_unlock(&lock_access);
