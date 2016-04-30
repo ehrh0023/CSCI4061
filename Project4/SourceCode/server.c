@@ -26,7 +26,6 @@ typedef struct request_queue
 // Global Variables
 int port;
 int cache_size;
-int wNum = 0;
 
 // Buffer Information
 request_queue_t queue[MAX_QUEUE_SIZE];
@@ -50,13 +49,15 @@ const char *get_filename_ext(const char *filename) {
 
 void * dispatch(void * arg)
 {
+	int fd;
+	char filename[MAX_REQUEST_LENGTH];
+	
 	while (1) {
-		int fd = accept_connection();
+		fd = accept_connection();
 		if (fd < 0) {
 			continue; // according to TA Nishad Trivedi, do nothing here
 		}
 		
-		char filename[MAX_REQUEST_LENGTH];
 		pthread_mutex_lock(&lock_access);
 		if (get_request(fd, filename) != 0) {
 			pthread_mutex_unlock(&lock_access);
@@ -79,10 +80,13 @@ void * dispatch(void * arg)
 
 void * worker(void * arg)
 {
+	char *buf;
+	struct stat sb;
+	int fd;
+	char content_type[12];
+	char ext[5];
+	
 	while (1) {
-		char *buf;
-		struct stat sb;
-		int fd;
 		pthread_mutex_lock(&lock_access);
 		if (count == 0) {
 			pthread_cond_wait(&queue_content, &lock_access);
@@ -112,6 +116,7 @@ void * worker(void * arg)
 		buf = (char *) malloc(sb.st_size);
 		if (read(fd, buf, sb.st_size) < 0) {
 			perror("read failure");
+			close(fd);
 			return_error(queue[queue_out].m_socket, buf);
 			queue_out = (queue_out + 1) % queue_length;
 			count--;
@@ -121,8 +126,6 @@ void * worker(void * arg)
 			continue;
 		}
 		
-		char content_type[12];
-		char ext[5];
 		strcpy(ext, get_filename_ext(queue[queue_out].m_szRequest));
 		if (strcmp(ext, "html") == 0 || strcmp(ext, "htm") == 0) {
 			strcpy(content_type, "text/html");
@@ -139,6 +142,7 @@ void * worker(void * arg)
 		
 		if (return_result(queue[queue_out].m_socket, content_type, buf, sb.st_size) != 0) {
 			perror("return_result failure");
+			close(fd);
 			return_error(queue[queue_out].m_socket, buf);
 			queue_out = (queue_out + 1) % queue_length;
 			count--;
@@ -147,12 +151,12 @@ void * worker(void * arg)
 			free(buf);
 			continue;
 		}
+		close(fd);
 		free(buf);
 		queue_out = (queue_out + 1) % queue_length;
 		count--;
 		pthread_cond_signal(&queue_open);
 		pthread_mutex_unlock(&lock_access);
-		sleep(3);
 	}
 	return NULL;
 }
