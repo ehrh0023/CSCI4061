@@ -2,7 +2,6 @@
  * Name: Caleb Biasco, Dennis Ehrhardt, Meghan Jonas
  * X500: biasc007, ehrh0023, jonas050 */
 
-
 #include <stdio.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -37,7 +36,7 @@ pthread_cond_t queue_open = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_content = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lock_access = PTHREAD_MUTEX_INITIALIZER;
 
-//Dispacther Info *No longer used*
+//Dispatcher Info *No longer used*
 //int num_dispatchers = 0;
 
 const char *get_filename_ext(const char *filename) {
@@ -49,17 +48,17 @@ const char *get_filename_ext(const char *filename) {
 
 void * dispatch(void * arg)
 {
-	int fd;
-	char filename[MAX_REQUEST_LENGTH];
+	char request[MAX_REQUEST_LENGTH];
+	int socket;
 	
 	while (1) {
-		fd = accept_connection();
-		if (fd < 0) {
+		socket = accept_connection();
+		if (socket < 0) {
 			continue; // according to TA Nishad Trivedi, do nothing here
 		}
 		
 		pthread_mutex_lock(&lock_access);
-		if (get_request(fd, filename) != 0) {
+		if (get_request(socket, request) != 0) {
 			pthread_mutex_unlock(&lock_access);
 			continue; // according to TA Nishad Trivedi, do nothing here
 		}
@@ -67,8 +66,8 @@ void * dispatch(void * arg)
 			pthread_cond_wait(&queue_open, &lock_access);
 		}
 		
-		queue[queue_in].m_socket = fd;
-		strcpy(queue[queue_in].m_szRequest, filename);
+		strcpy(queue[queue_in].m_szRequest, request);
+		queue[queue_in].m_socket = socket;
 		queue_in = (queue_in + 1) % queue_length;
 		count++;
 		pthread_cond_signal(&queue_content);
@@ -80,17 +79,18 @@ void * dispatch(void * arg)
 
 void * worker(void * arg)
 {
+	char request[MAX_REQUEST_LENGTH];
+	int socket;
+	
 	char *buf;
 	struct stat sb;
 	int fd;
-	char request[MAX_REQUEST_LENGTH];
-	int socket;
 	char content_type[12];
 	char ext[5];
 	
 	while (1) {
 		pthread_mutex_lock(&lock_access);
-		if (count == 0) {
+		while (count == 0) {
 			pthread_cond_wait(&queue_content, &lock_access);
 		}
 		strcpy(request, queue[queue_out].m_szRequest);
@@ -112,12 +112,19 @@ void * worker(void * arg)
 			continue;
 		}
 		fd = open(request+1, 0);
+		if (fd < 0) {
+			buf = (char *) malloc(1060);
+			sprintf(buf, "BAD REQUEST: Could not open \"%s\"", request);
+			return_error(socket, buf);
+			free(buf);
+			continue;
+		}
 		
 		buf = (char *) malloc(sb.st_size);
 		if (read(fd, buf, sb.st_size) < 0) {
 			perror("read failure");
-			close(fd);
 			return_error(socket, buf);
+			close(fd);
 			free(buf);
 			continue;
 		}
@@ -136,13 +143,16 @@ void * worker(void * arg)
 			strcpy(content_type, "text/plain");
 		}
 		
+		pthread_mutex_lock(&lock_access);
 		if (return_result(socket, content_type, buf, sb.st_size) != 0) {
 			perror("return_result failure");
-			close(fd);
 			return_error(socket, buf);
+			pthread_mutex_unlock(&lock_access);
+			close(fd);
 			free(buf);
 			continue;
 		}
+		pthread_mutex_unlock(&lock_access);
 		close(fd);
 		free(buf);
 	}
@@ -165,7 +175,10 @@ int main(int argc, char **argv)
 
 	port = atoi(argv[1]);
 	init(port);
-	chdir(argv[2]);
+	if (chdir(argv[2]) == -1) {
+		printf("Improper directory\n");
+		return -1;
+	}
 	
 	if (atoi(argv[3]) > MAX_THREADS) {
 		printf("Max # of dispatcher threads is 100\n");
