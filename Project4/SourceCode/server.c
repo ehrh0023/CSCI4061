@@ -40,9 +40,6 @@ pthread_cond_t queue_open = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_content = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lock_access = PTHREAD_MUTEX_INITIALIZER;
 
-//Dispatcher Info *No longer used*
-//int num_dispatchers = 0;
-
 /*
  * Finds the last period in a string and returns the portion afterward
  */
