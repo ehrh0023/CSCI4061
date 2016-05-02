@@ -27,7 +27,6 @@ int port;
 int cache_size;
 
 // Request logging
-FILE *request_log;
 pthread_mutex_t file_access = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock_id = PTHREAD_MUTEX_INITIALIZER;
 int worker_id = 0;
@@ -99,13 +98,16 @@ void * worker(void * arg)
 	int wid= worker_id;
 	worker_id++;
 	pthread_mutex_unlock(&lock_id);
+	FILE * request_log;
 
 	while (1) {
 		requests_handled++;
+		char tempchar[MAX_REQUEST_LENGTH*2];
 		char lbuf[MAX_REQUEST_LENGTH*2];
 		lbuf[0] = 0;
-		sprintf(lbuf, "[%d]", wid);
-		sprintf(lbuf, "[%d]", requests_handled);
+		tempchar[0] = 0;
+		sprintf(tempchar, "[%d][%d]", wid, requests_handled);
+		strcat(lbuf, tempchar);
 		
 		pthread_mutex_lock(&lock_access);
 		while (count == 0) {
@@ -118,13 +120,21 @@ void * worker(void * arg)
 		pthread_cond_signal(&queue_open);
 		pthread_mutex_unlock(&lock_access);
 		
-		sprintf(lbuf, "[%d]", socket);
-		sprintf(lbuf, "[%s]", request);
+		sprintf(tempchar, "[%d][%s]", socket, request);
+		strcat(lbuf, tempchar);
 		
 		if (strcmp(request, "/favicon.ico") == 0) {
 			strcat(lbuf, "[Skip favicon.ico request.]\n");
+
+			//to log
 			pthread_mutex_lock(&file_access);
-			fprintf(request_log, "%s\n", lbuf);
+			request_log = fopen("web_server_log.txt", "ab");
+			if(request_log == NULL)
+			{
+				printf("Error opening log\n");
+			}
+			fprintf(request_log, lbuf);
+			fclose(request_log);
 			pthread_mutex_unlock(&file_access);
 			continue; // skips favicon.ico request from Google Chrome browser
 		}
@@ -136,8 +146,15 @@ void * worker(void * arg)
 			free(buf);
 
 			strcat(lbuf, "[Bad request.]\n");
+			//to log
 			pthread_mutex_lock(&file_access);
+			request_log = fopen("web_server_log.txt", "ab");
+			if(request_log == NULL)
+			{
+				printf("Error opening log\n");
+			}
 			fprintf(request_log, lbuf);
+			fclose(request_log);
 			pthread_mutex_unlock(&file_access);
 			continue;
 		}
@@ -149,8 +166,15 @@ void * worker(void * arg)
 			free(buf);
 
 			strcat(lbuf, "[Bad request.]\n");
+			//to log
 			pthread_mutex_lock(&file_access);
+			request_log = fopen("web_server_log.txt", "ab");
+			if(request_log == NULL)
+			{
+				printf("Error opening log\n");
+			}
 			fprintf(request_log, lbuf);
+			fclose(request_log);
 			pthread_mutex_unlock(&file_access);
 			continue;
 		}
@@ -163,8 +187,15 @@ void * worker(void * arg)
 			free(buf);
 
 			strcat(lbuf, "[Read failure.]\n");
+			//to log
 			pthread_mutex_lock(&file_access);
+			request_log = fopen("web_server_log.txt", "ab");
+			if(request_log == NULL)
+			{
+				printf("Error opening log\n");
+			}
 			fprintf(request_log, lbuf);
+			fclose(request_log);
 			pthread_mutex_unlock(&file_access);
 			continue;
 		}
@@ -192,16 +223,31 @@ void * worker(void * arg)
 			free(buf);
 
 			strcat(lbuf, "[Failure returning result.]\n");
+			//to log
 			pthread_mutex_lock(&file_access);
+			request_log = fopen("web_server_log.txt", "ab");
+			if(request_log == NULL)
+			{
+				printf("Error opening log\n");
+			}
 			fprintf(request_log, lbuf);
+			fclose(request_log);
 			pthread_mutex_unlock(&file_access);
 			continue;
 		}
 		pthread_mutex_unlock(&lock_access);
 		
-		sprintf(lbuf, "[%d]\n", sb.st_size);
+		sprintf(tempchar, "[%d]\n", sb.st_size);
+		strcat(lbuf, tempchar);
+		//to log
 		pthread_mutex_lock(&file_access);
+		request_log = fopen("web_server_log.txt", "ab");
+		if(request_log == NULL)
+		{
+			printf("Error opening log\n");
+		}
 		fprintf(request_log, lbuf);
+		fclose(request_log);
 		pthread_mutex_unlock(&file_access);
 		close(fd);
 		free(buf);
@@ -216,6 +262,7 @@ int main(int argc, char **argv)
 	int i;
 	pthread_t dispatchers[MAX_THREADS];
 	pthread_t workers[MAX_THREADS];
+	FILE *request_log;
 
 	//Error check first.
 	if(argc != 6 && argc != 7)
@@ -230,11 +277,8 @@ int main(int argc, char **argv)
 		printf("Improper directory\n");
 		return -1;
 	}
-	if(request_log = fopen("web_server_log.txt", "w+") == NULL)
-	{
-		printf("Error creating log\n");
-		return -1;
-	}
+	// Delete old log.
+	remove("web_server_log.txt");
 	
 	if (atoi(argv[3]) > MAX_THREADS) {
 		printf("Max # of dispatcher threads is 100\n");
