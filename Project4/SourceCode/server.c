@@ -41,10 +41,10 @@ pthread_mutex_t lock_access = PTHREAD_MUTEX_INITIALIZER;
 //int num_dispatchers = 0;
 
 const char *get_filename_ext(const char *filename) {
-	const char *dot = strrchr(filename, '.');
-	if (!dot || dot == filename)
+	const char *dot_index = strrchr(filename, '.');
+	if (!dot_index || dot_index == filename)
 		return "";
-	return dot + 1;
+	return dot_index + 1;
 }
 
 void * dispatch(void * arg)
@@ -83,6 +83,8 @@ void * worker(void * arg)
 	char *buf;
 	struct stat sb;
 	int fd;
+	char request[MAX_REQUEST_LENGTH];
+	int socket;
 	char content_type[12];
 	char ext[5];
 	
@@ -91,42 +93,36 @@ void * worker(void * arg)
 		if (count == 0) {
 			pthread_cond_wait(&queue_content, &lock_access);
 		}
+		strcpy(request, queue[queue_out].m_szRequest);
+		socket = queue[queue_out].m_socket;
+		queue_out = (queue_out + 1) % queue_length;
+		count--;
+		pthread_cond_signal(&queue_open);
+		pthread_mutex_unlock(&lock_access);
 		
-		if (strcmp(queue[queue_out].m_szRequest, "/favicon.ico") == 0) {
-			queue_out = (queue_out + 1) % queue_length;
-			count--;
-			pthread_cond_signal(&queue_open);
-			pthread_mutex_unlock(&lock_access);
+		if (strcmp(request, "/favicon.ico") == 0) {
 			continue; // skips favicon.ico request from Google Chrome browser
 		}
 		
-		if (stat(queue[queue_out].m_szRequest+1, &sb) < 0) {
+		if (stat(request+1, &sb) < 0) {
 			buf = (char *) malloc(1060);
-			sprintf(buf, "BAD REQUEST: Could not find \"%s\"", queue[queue_out].m_szRequest);
-			return_error(queue[queue_out].m_socket, buf);
-			queue_out = (queue_out + 1) % queue_length;
-			count--;
-			pthread_cond_signal(&queue_open);
-			pthread_mutex_unlock(&lock_access);
+			sprintf(buf, "BAD REQUEST: Could not find \"%s\"", request);
+			return_error(socket, buf);
 			free(buf);
 			continue;
 		}
-		fd = open(queue[queue_out].m_szRequest+1, 0);
+		fd = open(request+1, 0);
 		
 		buf = (char *) malloc(sb.st_size);
 		if (read(fd, buf, sb.st_size) < 0) {
 			perror("read failure");
 			close(fd);
-			return_error(queue[queue_out].m_socket, buf);
-			queue_out = (queue_out + 1) % queue_length;
-			count--;
-			pthread_cond_signal(&queue_open);
-			pthread_mutex_unlock(&lock_access);
+			return_error(socket, buf);
 			free(buf);
 			continue;
 		}
 		
-		strcpy(ext, get_filename_ext(queue[queue_out].m_szRequest));
+		strcpy(ext, get_filename_ext(request));
 		if (strcmp(ext, "html") == 0 || strcmp(ext, "htm") == 0) {
 			strcpy(content_type, "text/html");
 		}
@@ -140,23 +136,15 @@ void * worker(void * arg)
 			strcpy(content_type, "text/plain");
 		}
 		
-		if (return_result(queue[queue_out].m_socket, content_type, buf, sb.st_size) != 0) {
+		if (return_result(socket, content_type, buf, sb.st_size) != 0) {
 			perror("return_result failure");
 			close(fd);
-			return_error(queue[queue_out].m_socket, buf);
-			queue_out = (queue_out + 1) % queue_length;
-			count--;
-			pthread_cond_signal(&queue_open);
-			pthread_mutex_unlock(&lock_access);
+			return_error(socket, buf);
 			free(buf);
 			continue;
 		}
 		close(fd);
 		free(buf);
-		queue_out = (queue_out + 1) % queue_length;
-		count--;
-		pthread_cond_signal(&queue_open);
-		pthread_mutex_unlock(&lock_access);
 	}
 	return NULL;
 }
@@ -175,20 +163,32 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	printf("Creating dispatcher and worker threads...\n");
 	port = atoi(argv[1]);
 	init(port);
 	chdir(argv[2]);
 	
+	if (atoi(argv[3]) > MAX_THREADS) {
+		printf("Max # of dispatcher threads is 100\n");
+		return -1;
+	}
 	num_dispatcher = atoi(argv[3]);
+	if (atoi(argv[4]) > MAX_THREADS) {
+		printf("Max # of worker threads is 100\n");
+		return -1;
+	}
 	num_workers = atoi(argv[4]);
 	
+	if (atoi(argv[5]) > MAX_QUEUE_SIZE) {
+		printf("Max queue size is 100\n");
+		return -1;
+	}
 	queue_length = atoi(argv[5]);
 	if (argv[6] != 0)
 		cache_size = atoi(argv[6]);
 	else
 		cache_size = 0;
 	
+	printf("Creating dispatcher and worker threads...\n");
 	// Create Dispatchers
 	for(i = 0; i < num_dispatcher; i++)
 	{
