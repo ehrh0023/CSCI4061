@@ -26,6 +26,12 @@ typedef struct request_queue
 int port;
 int cache_size;
 
+// Request logging
+FILE *request_log;
+pthread_mutex_t file_access = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock_id = PTHREAD_MUTEX_INITIALIZER;
+int worker_id = 0;
+
 // Buffer Information
 request_queue_t queue[MAX_QUEUE_SIZE];
 int queue_length;
@@ -87,20 +93,39 @@ void * worker(void * arg)
 	int fd;
 	char content_type[12];
 	char ext[5];
-	
+
+	int requests_handled;
+	pthread_mutex_lock(&lock_id);
+	int wid= worker_id;
+	worker_id++;
+	pthread_mutex_unlock(&lock_id);
+
 	while (1) {
+		requests_handled++;
+		char lbuf[MAX_REQUEST_LENGTH*2];
+		lbuf[0] = 0;
+		sprintf(lbuf, "[%d]", wid);
+		sprintf(lbuf, "[%d]", requests_handled);
+		
 		pthread_mutex_lock(&lock_access);
 		while (count == 0) {
 			pthread_cond_wait(&queue_content, &lock_access);
 		}
-		strcpy(request, queue[queue_out].m_szRequest);
+		sprintf(request, queue[queue_out].m_szRequest);
 		socket = queue[queue_out].m_socket;
 		queue_out = (queue_out + 1) % queue_length;
 		count--;
 		pthread_cond_signal(&queue_open);
 		pthread_mutex_unlock(&lock_access);
 		
+		sprintf(lbuf, "[%d]", socket);
+		sprintf(lbuf, "[%s]", request);
+		
 		if (strcmp(request, "/favicon.ico") == 0) {
+			strcat(lbuf, "[Skip favicon.ico request.]\n");
+			pthread_mutex_lock(&file_access);
+			fprintf(request_log, "%s\n", lbuf);
+			pthread_mutex_unlock(&file_access);
 			continue; // skips favicon.ico request from Google Chrome browser
 		}
 		
@@ -109,6 +134,11 @@ void * worker(void * arg)
 			sprintf(buf, "BAD REQUEST: Could not find \"%s\"", request);
 			return_error(socket, buf);
 			free(buf);
+
+			strcat(lbuf, "[Bad request.]\n");
+			pthread_mutex_lock(&file_access);
+			fprintf(request_log, lbuf);
+			pthread_mutex_unlock(&file_access);
 			continue;
 		}
 		fd = open(request+1, 0);
@@ -117,6 +147,11 @@ void * worker(void * arg)
 			sprintf(buf, "BAD REQUEST: Could not open \"%s\"", request);
 			return_error(socket, buf);
 			free(buf);
+
+			strcat(lbuf, "[Bad request.]\n");
+			pthread_mutex_lock(&file_access);
+			fprintf(request_log, lbuf);
+			pthread_mutex_unlock(&file_access);
 			continue;
 		}
 		
@@ -126,6 +161,11 @@ void * worker(void * arg)
 			return_error(socket, buf);
 			close(fd);
 			free(buf);
+
+			strcat(lbuf, "[Read failure.]\n");
+			pthread_mutex_lock(&file_access);
+			fprintf(request_log, lbuf);
+			pthread_mutex_unlock(&file_access);
 			continue;
 		}
 		
@@ -150,9 +190,19 @@ void * worker(void * arg)
 			pthread_mutex_unlock(&lock_access);
 			close(fd);
 			free(buf);
+
+			strcat(lbuf, "[Failure returning result.]\n");
+			pthread_mutex_lock(&file_access);
+			fprintf(request_log, lbuf);
+			pthread_mutex_unlock(&file_access);
 			continue;
 		}
 		pthread_mutex_unlock(&lock_access);
+		
+		sprintf(lbuf, "[%d]\n", sb.st_size);
+		pthread_mutex_lock(&file_access);
+		fprintf(request_log, lbuf);
+		pthread_mutex_unlock(&file_access);
 		close(fd);
 		free(buf);
 	}
@@ -166,6 +216,7 @@ int main(int argc, char **argv)
 	int i;
 	pthread_t dispatchers[MAX_THREADS];
 	pthread_t workers[MAX_THREADS];
+
 	//Error check first.
 	if(argc != 6 && argc != 7)
 	{
@@ -177,6 +228,11 @@ int main(int argc, char **argv)
 	init(port);
 	if (chdir(argv[2]) == -1) {
 		printf("Improper directory\n");
+		return -1;
+	}
+	if(request_log = fopen("web_server_log.txt", "w+") == NULL)
+	{
+		printf("Error creating log\n");
 		return -1;
 	}
 	
